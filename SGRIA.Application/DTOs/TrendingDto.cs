@@ -5,6 +5,7 @@ public record ItemTrendingDto(
     string Nombre,
     string? Categoria,
     int PedidosUltimosMinutos,
+    int MesasUltimosMinutos, // Nuevo: cantidad de mesas/sesiones distintas
     DateTime UltimoPedido
 );
 

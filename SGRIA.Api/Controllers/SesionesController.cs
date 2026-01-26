@@ -9,10 +9,12 @@ namespace SGRIA.Api.Controllers;
 public class SesionesController : ControllerBase
 {
     private readonly SenalPedidoService _pedidoService;
+    private readonly TagVotoService _tagVotoService;
 
-    public SesionesController(SenalPedidoService pedidoService)
+    public SesionesController(SenalPedidoService pedidoService, TagVotoService tagVotoService)
     {
         _pedidoService = pedidoService;
+        _tagVotoService = tagVotoService;
     }
 
     /// <summary>
@@ -47,5 +49,31 @@ public class SesionesController : ControllerBase
     {
         var pedido = await _pedidoService.GetByIdAsync(pedidoId, ct);
         return pedido == null ? NotFound() : Ok(pedido);
+    }
+
+    /// <summary>
+    /// Crea o actualiza un voto de tag para un item en una sesión (upsert).
+    /// Valida que la sesión esté activa y que el item pertenezca al restaurante de la sesión.
+    /// </summary>
+    [HttpPost("{sesionId}/items/{itemMenuId}/tags")]
+    public async Task<IActionResult> CrearOActualizarTagVoto(
+        [FromRoute] int sesionId,
+        [FromRoute] int itemMenuId,
+        [FromBody] TagVotoCreateDto dto,
+        CancellationToken ct)
+    {
+        try
+        {
+            var voto = await _tagVotoService.CrearOActualizarVotoAsync(sesionId, itemMenuId, dto, ct);
+            return Ok(voto);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

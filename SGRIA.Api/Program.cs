@@ -13,7 +13,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Services
-builder.Services.AddScoped<ProductoService>();
 builder.Services.AddScoped<MesaService>();
 builder.Services.AddScoped<NotificacionClienteService>();
 builder.Services.AddScoped<SesionMesaService>();
@@ -25,13 +24,15 @@ builder.Services.AddScoped<RestauranteService>();
 builder.Services.AddScoped<ItemMenuService>();
 builder.Services.AddScoped<ItemMenuAliasService>();
 builder.Services.AddScoped<TagRapidoService>();
+builder.Services.AddScoped<FeedService>();
+builder.Services.AddScoped<ItemSocialService>();
+builder.Services.AddScoped<TagVotoService>();
 
 // 1) DbContext (Postgres)
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // 2) Repositories
-builder.Services.AddScoped<IProductoRepository, EfProductoRepository>();
 builder.Services.AddScoped<IMesaRepository, EfMesaRepository>();
 builder.Services.AddScoped<INotificacionClienteRepository, EfNotificacionClienteRepository>();
 builder.Services.AddScoped<ISesionMesaRepository, EfSesionMesaRepository>();
@@ -42,6 +43,8 @@ builder.Services.AddScoped<IEstadisticasRepository, EfEstadisticasRepository>();
 builder.Services.AddScoped<IRestauranteRepository, EfRestauranteRepository>();
 builder.Services.AddScoped<IItemMenuAliasRepository, EfItemMenuAliasRepository>();
 builder.Services.AddScoped<ITagRapidoRepository, EfTagRapidoRepository>();
+builder.Services.AddScoped<IItemSocialRepository, EfItemSocialRepository>();
+builder.Services.AddScoped<ITagVotoRepository, EfTagVotoRepository>();
 
 var app = builder.Build();
 

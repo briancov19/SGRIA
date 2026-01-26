@@ -10,13 +10,16 @@ public class RestaurantesController : ControllerBase
 {
     private readonly RestauranteService _restauranteService;
     private readonly EstadisticasService _estadisticasService;
+    private readonly TagRapidoService _tagService;
 
     public RestaurantesController(
         RestauranteService restauranteService,
-        EstadisticasService estadisticasService)
+        EstadisticasService estadisticasService,
+        TagRapidoService tagService)
     {
         _restauranteService = restauranteService;
         _estadisticasService = estadisticasService;
+        _tagService = tagService;
     }
 
     // ABM de Restaurantes
@@ -121,5 +124,19 @@ public class RestaurantesController : ControllerBase
 
         var recomendados = await _estadisticasService.GetRecomendadosAsync(id, dias, ct);
         return Ok(recomendados);
+    }
+
+    /// <summary>
+    /// Obtiene la lista de tags rápidos activos (globales o del restaurante)
+    /// </summary>
+    [HttpGet("{id}/tags")]
+    public async Task<IActionResult> GetTags(
+        [FromRoute] int id,
+        CancellationToken ct = default)
+    {
+        // Por ahora devolvemos todos los tags activos (globales)
+        // En el futuro se pueden filtrar por restaurante si es necesario
+        var tags = await _tagService.GetAllAsync(soloActivos: true, ct);
+        return Ok(tags);
     }
 }

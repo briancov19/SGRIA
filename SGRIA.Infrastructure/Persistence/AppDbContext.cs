@@ -10,7 +10,6 @@ public class AppDbContext : DbContext
     {
     }
 
-    public DbSet<Producto> Productos => Set<Producto>();
     public DbSet<Mesa> Mesas => Set<Mesa>();
     public DbSet<NotificacionCliente> NotificacionesClientes { get; set; }
     public DbSet<Restaurante> Restaurantes => Set<Restaurante>();
@@ -25,16 +24,6 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        // Producto (legacy)
-        modelBuilder.Entity<Producto>(e =>
-        {
-            e.ToTable("productos");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
-            e.Property(x => x.Precio).HasPrecision(18, 2);
-            e.Property(x => x.CreatedAt).IsRequired();
-        });
 
         // NotificacionCliente (legacy)
         modelBuilder.Entity<NotificacionCliente>(builder =>
@@ -192,6 +181,7 @@ public class AppDbContext : DbContext
             builder.Property(x => x.FechaHora).HasColumnName("RatFchaHora").HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             builder.HasIndex(x => x.SenalPedidoId).IsUnique();
+            builder.HasIndex(x => x.FechaHora); // Para consultas por fecha
             builder.HasIndex(x => new { x.Puntaje, x.FechaHora });
             
             builder.HasOne(x => x.SenalPedido)
@@ -225,7 +215,9 @@ public class AppDbContext : DbContext
             builder.Property(x => x.Valor).HasColumnName("VtiValor").HasDefaultValue((short)1); // +1 / -1
             builder.Property(x => x.FechaHora).HasColumnName("VtiFchaHora").HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-            builder.HasIndex(x => new { x.SesionMesaId, x.ItemMenuId, x.TagRapidoId });
+            // Índice único para evitar duplicados (sesion+item+tag)
+            builder.HasIndex(x => new { x.SesionMesaId, x.ItemMenuId, x.TagRapidoId })
+                .IsUnique();
             builder.HasIndex(x => x.ItemMenuId);
             
             builder.HasOne(x => x.SesionMesa)

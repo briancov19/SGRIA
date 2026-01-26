@@ -8,11 +8,16 @@ public class NotificacionClienteService
 {
     private readonly INotificacionClienteRepository _repo;
     private readonly IMesaRepository _mesaRepo;
+    private readonly ISesionMesaRepository _sesionRepo;
 
-    public NotificacionClienteService(INotificacionClienteRepository repo, IMesaRepository mesaRepo)
+    public NotificacionClienteService(
+        INotificacionClienteRepository repo,
+        IMesaRepository mesaRepo,
+        ISesionMesaRepository sesionRepo)
     {
         _repo = repo;
         _mesaRepo = mesaRepo;
+        _sesionRepo = sesionRepo;
     }
 
     public async Task<NotificacionClienteDto?> GetByIdAsync(int id, CancellationToken ct)
@@ -39,6 +44,21 @@ public class NotificacionClienteService
 
         if (!mesa.Activa)
             throw new InvalidOperationException("La mesa no está activa");
+
+        // Asegurar que existe una sesión activa (crear/reutilizar si no existe)
+        var sesionActiva = await _sesionRepo.GetActivaConActividadRecienteAsync(mesa.Id, 90, ct);
+        
+        if (sesionActiva == null)
+        {
+            // Crear nueva sesión si no existe una activa
+            var nuevaSesion = new SesionMesa
+            {
+                MesaId = mesa.Id,
+                Origen = "QR",
+                FechaHoraInicio = DateTime.UtcNow
+            };
+            sesionActiva = await _sesionRepo.CreateAsync(nuevaSesion, ct);
+        }
        
         var notificacionCliente = new NotificacionCliente
         {

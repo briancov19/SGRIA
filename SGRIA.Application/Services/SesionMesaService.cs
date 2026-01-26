@@ -8,11 +8,16 @@ public class SesionMesaService
 {
     private readonly ISesionMesaRepository _sesionRepo;
     private readonly IMesaRepository _mesaRepo;
+    private readonly int _timeoutMinutos;
 
-    public SesionMesaService(ISesionMesaRepository sesionRepo, IMesaRepository mesaRepo)
+    public SesionMesaService(
+        ISesionMesaRepository sesionRepo,
+        IMesaRepository mesaRepo,
+        int timeoutMinutos = 90)
     {
         _sesionRepo = sesionRepo;
         _mesaRepo = mesaRepo;
+        _timeoutMinutos = timeoutMinutos;
     }
 
     public async Task<SesionMesaDto> CrearOReutilizarSesionAsync(
@@ -32,12 +37,15 @@ public class SesionMesaService
             throw new InvalidOperationException("La mesa no está activa");
         }
 
-        // Buscar sesión activa (sin fecha de fin)
-        var sesionActiva = await _sesionRepo.GetActivaByMesaIdAsync(mesa.Id, ct);
+        // Buscar sesión activa con actividad reciente (considerando timeout)
+        var sesionActiva = await _sesionRepo.GetActivaConActividadRecienteAsync(
+            mesa.Id,
+            _timeoutMinutos,
+            ct);
 
         if (sesionActiva != null)
         {
-            // Reutilizar sesión existente
+            // Reutilizar sesión existente (tiene actividad reciente)
             return new SesionMesaDto(
                 sesionActiva.Id,
                 sesionActiva.MesaId,
@@ -48,7 +56,7 @@ public class SesionMesaService
             );
         }
 
-        // Crear nueva sesión
+        // Crear nueva sesión (no hay sesión activa o la existente expiró)
         var nuevaSesion = new SesionMesa
         {
             MesaId = mesa.Id,

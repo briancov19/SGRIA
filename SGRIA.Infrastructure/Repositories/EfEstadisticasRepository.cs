@@ -101,27 +101,42 @@ public class EfEstadisticasRepository : IEstadisticasRepository
     {
         var desde = DateTime.UtcNow.AddMinutes(-minutos);
 
-        var query = from p in _db.SenalesPedido
-                    where p.ItemMenu.RestauranteId == restauranteId
-                       && p.FechaHoraConfirmacion >= desde
-                    group p by new
-                    {
-                        p.ItemMenuId,
-                        p.ItemMenu.Nombre,
-                        p.ItemMenu.Categoria
-                    } into g
-                    select new ItemTrendingDto(
-                        g.Key.ItemMenuId,
-                        g.Key.Nombre,
-                        g.Key.Categoria,
-                        g.Count(),
-                        g.Max(p => p.FechaHoraConfirmacion)
-                    );
+        // Primero obtener los pedidos agrupados
+        var pedidosQuery = from p in _db.SenalesPedido
+                          where p.ItemMenu.RestauranteId == restauranteId
+                             && p.FechaHoraConfirmacion >= desde
+                          group p by new
+                          {
+                              p.ItemMenuId,
+                              p.ItemMenu.Nombre,
+                              p.ItemMenu.Categoria
+                          } into g
+                          select new
+                          {
+                              g.Key.ItemMenuId,
+                              g.Key.Nombre,
+                              g.Key.Categoria,
+                              PedidosUltimosMinutos = g.Count(),
+                              UltimoPedido = g.Max(p => p.FechaHoraConfirmacion),
+                              SesionIds = g.Select(p => p.SesionMesaId).Distinct()
+                          };
 
-        return await query
+        var pedidos = await pedidosQuery.ToListAsync(ct);
+
+        // Construir resultado con mesasUltimosMinutos
+        var resultado = pedidos.Select(p => new ItemTrendingDto(
+            p.ItemMenuId,
+            p.Nombre,
+            p.Categoria,
+            p.PedidosUltimosMinutos,
+            p.SesionIds.Count(), // Mesas distintas (sesiones distintas)
+            p.UltimoPedido
+        )).ToList();
+
+        return resultado
             .OrderByDescending(x => x.PedidosUltimosMinutos)
             .ThenByDescending(x => x.UltimoPedido)
-            .ToListAsync(ct);
+            .ToList();
     }
 
     public async Task<List<ItemRecomendadoDto>> GetRecomendadosAsync(

@@ -49,6 +49,14 @@ public class SenalPedidoService
             throw new InvalidOperationException("El item de menú no está activo");
         }
 
+        // Validar que el item pertenece al mismo restaurante que la mesa/sesión
+        if (item.RestauranteId != sesion.Mesa.RestauranteId)
+        {
+            throw new InvalidOperationException(
+                $"El item de menú no pertenece al restaurante de esta sesión. " +
+                $"Item restaurante: {item.RestauranteId}, Sesión restaurante: {sesion.Mesa.RestauranteId}");
+        }
+
         // Crear señal de pedido
         var pedido = new SenalPedido
         {

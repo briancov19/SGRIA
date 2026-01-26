@@ -34,8 +34,13 @@ Documentación completa de todos los endpoints:
 
 #### Gestión
 - `GET /api/mesas` - Listar mesas
-- `GET /api/productos` - Listar productos
-- `GET /api/notificaciones` - Listar notificaciones
+- `POST /api/notificaciones-cliente` - Crear notificación desde QR
+
+#### Feed Social y Tags
+- `GET /api/mesas/qr/{qrToken}/feed` - Feed completo (trending, ranking, recomendados)
+- `GET /api/items-menu/{id}/social` - Estadísticas sociales de un item
+- `GET /api/restaurantes/{id}/tags` - Listar tags activos
+- `POST /api/sesiones/{sesionId}/items/{itemMenuId}/tags` - Votar tag (upsert)
 
 **Incluye:**
 - ✅ Descripción de cada endpoint

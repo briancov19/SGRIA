@@ -13,8 +13,8 @@ http://localhost:5000/api
 1. [Flujo Cliente (Anónimo)](#flujo-cliente-anónimo)
 2. [Estadísticas Restaurante](#estadísticas-restaurante)
 3. [Gestión de Mesas](#gestión-de-mesas)
-4. [Gestión de Productos](#gestión-de-productos)
-5. [Notificaciones](#notificaciones)
+4. [Notificaciones](#notificaciones)
+5. [Feed Social y Tags](#feed-social-y-tags)
 
 ---
 
@@ -303,6 +303,7 @@ Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
       "nombre": "Pizza Margherita",
       "categoria": "Pizzas",
       "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
       "ultimoPedido": "2026-01-25T20:14:30Z"
     },
     {
@@ -310,11 +311,17 @@ Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
       "nombre": "Ensalada César",
       "categoria": "Ensaladas",
       "pedidosUltimosMinutos": 5,
+      "mesasUltimosMinutos": 3,
       "ultimoPedido": "2026-01-25T20:12:15Z"
     }
   ]
 }
 ```
+
+**Campos de Respuesta:**
+- `pedidosUltimosMinutos` - Número de pedidos en los últimos X minutos
+- `mesasUltimosMinutos` - Número de mesas/sesiones distintas que pidieron este item
+- `ultimoPedido` - Fecha/hora del último pedido
 
 **Errores:**
 - `400 Bad Request` - El parámetro `min` debe estar entre 1 y 1440
@@ -327,6 +334,8 @@ curl "http://localhost:5000/api/restaurantes/1/trending?min=30"
 **Ordenamiento:**
 - Primero por `pedidosUltimosMinutos` (descendente)
 - Luego por `ultimoPedido` (descendente)
+
+**Nota:** El campo `mesasUltimosMinutos` indica cuántas mesas/sesiones distintas pidieron este item, útil para entender la diversidad de demanda.
 
 ---
 
@@ -448,31 +457,250 @@ curl "http://localhost:5000/api/restaurantes/1/recomendados?dias=30"
 
 ---
 
-## 🍕 Gestión de Productos
+## 🔔 Notificaciones
 
-### 1. Listar Todos los Productos
+### 1. Crear Notificación desde QR
 
-**Endpoint:** `GET /api/productos`
+Crea una notificación de cliente (pedir cuenta) desde el QR token de la mesa. Crea o reutiliza una sesión automáticamente.
 
-### 2. Obtener Producto por ID
+**Endpoint:** `POST /api/notificaciones-cliente`
 
-**Endpoint:** `GET /api/productos/{id}`
+**Body:**
+```json
+{
+  "qrToken": "MESA-001"
+}
+```
 
-### 3. Crear Producto
+**Campos del Body:**
+- `qrToken` (string, requerido) - Token QR único de la mesa
 
-**Endpoint:** `POST /api/productos`
+**Respuesta Exitosa (201 Created):**
+```json
+{
+  "id": 1,
+  "fechaCreacion": "2026-01-25T20:00:00Z",
+  "atendida": false,
+  "mesaId": 5,
+  "mesaNumero": 1
+}
+```
+
+**Errores:**
+- `400 Bad Request` - QR token requerido o mesa no activa
+- `404 Not Found` - Mesa no encontrada con QR token
+
+**Ejemplo cURL:**
+```bash
+curl -X POST "http://localhost:5000/api/notificaciones-cliente" \
+  -H "Content-Type: application/json" \
+  -d '{"qrToken": "MESA-001"}'
+```
+
+**Comportamiento:**
+- Crea o reutiliza una sesión automáticamente si no existe una activa
+- Valida que la mesa existe y está activa
+
+### 2. Obtener Notificación por ID
+
+**Endpoint:** `GET /api/notificaciones-cliente/{id}`
+
+### 3. Listar Notificaciones Activas
+
+**Endpoint:** `GET /api/notificaciones-cliente/activas?minutosCorte=15`
+
+### 4. Marcar Notificación como Atendida
+
+**Endpoint:** `PATCH /api/notificaciones-cliente/{id}/atender`
 
 ---
 
-## 🔔 Notificaciones
+## 📱 Feed Social y Tags
 
-### 1. Listar Notificaciones
+### 1. Feed Completo desde QR
 
-**Endpoint:** `GET /api/notificaciones`
+Obtiene el feed completo (trending, ranking, recomendados) para una mesa desde su QR token. Crea o reutiliza una sesión automáticamente.
 
-### 2. Crear Notificación
+**Endpoint:** `GET /api/mesas/qr/{qrToken}/feed`
 
-**Endpoint:** `POST /api/notificaciones`
+**Parámetros:**
+- `qrToken` (path, string, requerido) - Token QR único de la mesa
+- `min` (query, int, opcional) - Minutos para trending (default: 30, máximo: 1440)
+- `periodo` (query, string, opcional) - Período para ranking: `1d`, `7d`, `30d`, `90d` (default: `7d`)
+- `dias` (query, int, opcional) - Días para recomendados (default: 30, máximo: 365)
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "timestamp": "2026-01-26T10:00:00Z",
+  "sesionId": 123,
+  "trending": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
+      "ultimoPedido": "2026-01-26T09:55:00Z"
+    }
+  ],
+  "ranking": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "precio": 15.99,
+      "totalPedidos": 45,
+      "totalCantidad": 67,
+      "promedioRating": 0.85,
+      "totalRatings": 40
+    }
+  ],
+  "recomendados": [
+    {
+      "itemMenuId": 2,
+      "nombre": "Pasta Carbonara",
+      "categoria": "Pastas",
+      "precio": 12.50,
+      "promedioRating": 0.92,
+      "totalRatings": 28,
+      "ratingsPositivos": 25,
+      "ratingsNeutros": 2,
+      "ratingsNegativos": 1
+    }
+  ]
+}
+```
+
+**Errores:**
+- `400 Bad Request` - Parámetros inválidos
+- `404 Not Found` - QR token no encontrado
+- `409 Conflict` - Mesa no activa
+
+**Ejemplo cURL:**
+```bash
+curl "http://localhost:5000/api/mesas/qr/MESA-001/feed?min=30&periodo=7d&dias=30"
+```
+
+---
+
+### 2. Estadísticas Sociales de un Item
+
+Obtiene estadísticas sociales detalladas de un item de menú específico.
+
+**Endpoint:** `GET /api/items-menu/{itemMenuId}/social`
+
+**Parámetros:**
+- `itemMenuId` (path, int, requerido) - ID del item de menú
+- `min` (query, int, opcional) - Minutos para estadísticas recientes (default: 30)
+- `dias` (query, int, opcional) - Días para ratings (default: 30)
+- `periodo` (query, string, opcional) - Período para total pedidos: `1d`, `7d`, `30d`, `90d` (default: `7d`)
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "itemMenuId": 1,
+  "nombre": "Pizza Margherita",
+  "categoria": "Pizzas",
+  "pedidosUltimosMinutos": 8,
+  "mesasUltimosMinutos": 5,
+  "totalPedidosPeriodo": 45,
+  "promedioRating": 0.85,
+  "totalRatings": 40,
+  "ratingsPositivos": 34,
+  "ratingsNeutros": 4,
+  "ratingsNegativos": 2
+}
+```
+
+**Errores:**
+- `400 Bad Request` - Parámetros inválidos
+- `404 Not Found` - Item no encontrado
+
+**Ejemplo cURL:**
+```bash
+curl "http://localhost:5000/api/items-menu/1/social?min=30&dias=30&periodo=7d"
+```
+
+---
+
+### 3. Tags Rápidos
+
+#### Obtener Tags Activos
+
+**Endpoint:** `GET /api/restaurantes/{id}/tags`
+
+**Parámetros:**
+- `id` (path, int, requerido) - ID del restaurante
+
+**Respuesta Exitosa (200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Pica",
+    "tipo": "Sabor",
+    "activo": true
+  },
+  {
+    "id": 2,
+    "nombre": "Porción grande",
+    "tipo": "Porcion",
+    "activo": true
+  }
+]
+```
+
+#### Crear o Actualizar Voto de Tag
+
+Crea o actualiza un voto de tag para un item en una sesión (upsert). Evita spam con índice único.
+
+**Endpoint:** `POST /api/sesiones/{sesionId}/items/{itemMenuId}/tags`
+
+**Parámetros:**
+- `sesionId` (path, int, requerido) - ID de la sesión
+- `itemMenuId` (path, int, requerido) - ID del item de menú
+
+**Body:**
+```json
+{
+  "tagId": 1,
+  "valor": 1
+}
+```
+
+**Campos del Body:**
+- `tagId` (int, requerido) - ID del tag
+- `valor` (short, requerido) - Valor: `+1` o `-1`
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "id": 5,
+  "tagId": 1,
+  "tagNombre": "Pica",
+  "valor": 1,
+  "fechaHora": "2026-01-26T10:00:00Z"
+}
+```
+
+**Errores:**
+- `400 Bad Request` - Sesión cerrada, item no encontrado, tag no encontrado, valor inválido, o item no pertenece al restaurante
+- `404 Not Found` - Sesión o item no encontrado
+
+**Ejemplo cURL:**
+```bash
+curl -X POST "http://localhost:5000/api/sesiones/1/items/1/tags" \
+  -H "Content-Type: application/json" \
+  -d '{"tagId": 1, "valor": 1}'
+```
+
+**Validaciones:**
+- La sesión debe estar activa
+- El item debe pertenecer al restaurante de la sesión
+- El tag debe estar activo
+- El valor debe ser +1 o -1
+- Upsert: si ya existe voto para (sesion+item+tag), lo actualiza
 
 ---
 
