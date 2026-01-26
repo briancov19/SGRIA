@@ -5,16 +5,18 @@ using SGRIA.Application.Services;
 namespace SGRIA.Api.Controllers;
 
 [ApiController]
-[Route("api/mesas")]
-public class MesasController : ControllerBase
+[Route("api/tags-rapido")]
+public class TagsRapidoController : ControllerBase
 {
-    private readonly MesaService _service;
+    private readonly TagRapidoService _service;
 
-    public MesasController(MesaService service) => _service = service;
+    public TagsRapidoController(TagRapidoService service) => _service = service;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _service.GetAllAsync(ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] bool soloActivos = false,
+        CancellationToken ct = default)
+        => Ok(await _service.GetAllAsync(soloActivos, ct));
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
@@ -24,7 +26,7 @@ public class MesasController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] MesaCreateDto dto, CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody] TagRapidoCreateDto dto, CancellationToken ct)
     {
         try
         {
@@ -38,7 +40,7 @@ public class MesasController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] MesaUpdateDto dto, CancellationToken ct)
+    public async Task<IActionResult> Update(int id, [FromBody] TagRapidoUpdateDto dto, CancellationToken ct)
     {
         try
         {

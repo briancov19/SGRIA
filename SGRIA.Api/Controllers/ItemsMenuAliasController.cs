@@ -5,16 +5,16 @@ using SGRIA.Application.Services;
 namespace SGRIA.Api.Controllers;
 
 [ApiController]
-[Route("api/mesas")]
-public class MesasController : ControllerBase
+[Route("api/items-menu/{itemMenuId}/aliases")]
+public class ItemsMenuAliasController : ControllerBase
 {
-    private readonly MesaService _service;
+    private readonly ItemMenuAliasService _service;
 
-    public MesasController(MesaService service) => _service = service;
+    public ItemsMenuAliasController(ItemMenuAliasService service) => _service = service;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _service.GetAllAsync(ct));
+    public async Task<IActionResult> GetAll([FromRoute] int itemMenuId, CancellationToken ct)
+        => Ok(await _service.GetByItemMenuIdAsync(itemMenuId, ct));
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
@@ -24,12 +24,17 @@ public class MesasController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] MesaCreateDto dto, CancellationToken ct)
+    public async Task<IActionResult> Create(
+        [FromRoute] int itemMenuId,
+        [FromBody] ItemMenuAliasCreateDto dto,
+        CancellationToken ct)
     {
         try
         {
-            var created = await _service.CreateAsync(dto, ct);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            // Asegurar que el itemMenuId del body coincida con el de la ruta
+            var createDto = dto with { ItemMenuId = itemMenuId };
+            var created = await _service.CreateAsync(createDto, ct);
+            return CreatedAtAction(nameof(GetById), new { itemMenuId, id = created.Id }, created);
         }
         catch (ArgumentException ex)
         {
@@ -38,7 +43,7 @@ public class MesasController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] MesaUpdateDto dto, CancellationToken ct)
+    public async Task<IActionResult> Update(int id, [FromBody] ItemMenuAliasUpdateDto dto, CancellationToken ct)
     {
         try
         {

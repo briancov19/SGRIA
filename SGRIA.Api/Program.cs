@@ -12,18 +12,36 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Services
 builder.Services.AddScoped<ProductoService>();
 builder.Services.AddScoped<MesaService>();
 builder.Services.AddScoped<NotificacionClienteService>();
+builder.Services.AddScoped<SesionMesaService>();
+builder.Services.AddScoped<SenalPedidoService>();
+builder.Services.AddScoped<SenalRatingService>();
+builder.Services.AddScoped<EstadisticasService>();
+builder.Services.AddScoped<MesaQrService>();
+builder.Services.AddScoped<RestauranteService>();
+builder.Services.AddScoped<ItemMenuService>();
+builder.Services.AddScoped<ItemMenuAliasService>();
+builder.Services.AddScoped<TagRapidoService>();
 
 // 1) DbContext (Postgres)
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2) Repo EF 
+// 2) Repositories
 builder.Services.AddScoped<IProductoRepository, EfProductoRepository>();
 builder.Services.AddScoped<IMesaRepository, EfMesaRepository>();
 builder.Services.AddScoped<INotificacionClienteRepository, EfNotificacionClienteRepository>();
+builder.Services.AddScoped<ISesionMesaRepository, EfSesionMesaRepository>();
+builder.Services.AddScoped<ISenalPedidoRepository, EfSenalPedidoRepository>();
+builder.Services.AddScoped<ISenalRatingRepository, EfSenalRatingRepository>();
+builder.Services.AddScoped<IItemMenuRepository, EfItemMenuRepository>();
+builder.Services.AddScoped<IEstadisticasRepository, EfEstadisticasRepository>();
+builder.Services.AddScoped<IRestauranteRepository, EfRestauranteRepository>();
+builder.Services.AddScoped<IItemMenuAliasRepository, EfItemMenuAliasRepository>();
+builder.Services.AddScoped<ITagRapidoRepository, EfTagRapidoRepository>();
 
 var app = builder.Build();
 

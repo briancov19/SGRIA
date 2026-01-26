@@ -7,8 +7,13 @@ namespace SGRIA.Application.Services;
 public class NotificacionClienteService
 {
     private readonly INotificacionClienteRepository _repo;
+    private readonly IMesaRepository _mesaRepo;
 
-    public NotificacionClienteService(INotificacionClienteRepository repo) => _repo = repo;
+    public NotificacionClienteService(INotificacionClienteRepository repo, IMesaRepository mesaRepo)
+    {
+        _repo = repo;
+        _mesaRepo = mesaRepo;
+    }
 
     public async Task<NotificacionClienteDto?> GetByIdAsync(int id, CancellationToken ct)
     {
@@ -24,12 +29,20 @@ public class NotificacionClienteService
 
     public async Task<NotificacionClienteDto> AddAsync(NotificacionClienteCreateDto dto, CancellationToken ct)
     {
-        if (dto.MesaId == 0)
-            throw new ArgumentException("Identificador de mesa requerido");
+        if (string.IsNullOrWhiteSpace(dto.QrToken))
+            throw new ArgumentException("QrToken requerido");
+
+        // Buscar mesa por QR token
+        var mesa = await _mesaRepo.GetByQrTokenAsync(dto.QrToken, ct);
+        if (mesa == null)
+            throw new ArgumentException($"Mesa no encontrada con QR token: {dto.QrToken}");
+
+        if (!mesa.Activa)
+            throw new InvalidOperationException("La mesa no está activa");
        
         var notificacionCliente = new NotificacionCliente
         {
-            MesaId = dto.MesaId,
+            MesaId = mesa.Id,
         };
 
         var saved = await _repo.AddAsync(notificacionCliente, ct);
