@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<SenalRating> SenalesRating => Set<SenalRating>();
     public DbSet<TagRapido> TagsRapido => Set<TagRapido>();
     public DbSet<VotoTagItemMenu> VotosTagItemMenu => Set<VotoTagItemMenu>();
+    public DbSet<AnonDevice> AnonDevices => Set<AnonDevice>();
+    public DbSet<SesionParticipante> SesionParticipantes => Set<SesionParticipante>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -233,6 +235,43 @@ public class AppDbContext : DbContext
             builder.HasOne(x => x.TagRapido)
                 .WithMany(t => t.Votos)
                 .HasForeignKey(x => x.TagRapidoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // AnonDevice
+        modelBuilder.Entity<AnonDevice>(builder =>
+        {
+            builder.ToTable("anon_devices");
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).HasColumnName("DevId");
+            builder.Property(x => x.DeviceHash).HasColumnName("DevHash").HasMaxLength(64).IsRequired();
+            builder.Property(x => x.FechaCreacion).HasColumnName("DevFchaCreacion").HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            builder.HasIndex(x => x.DeviceHash).IsUnique();
+        });
+
+        // SesionParticipante
+        modelBuilder.Entity<SesionParticipante>(builder =>
+        {
+            builder.ToTable("sesion_participantes");
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).HasColumnName("ParId");
+            builder.Property(x => x.SesionMesaId).HasColumnName("ParSesId");
+            builder.Property(x => x.AnonDeviceId).HasColumnName("ParDevId");
+            builder.Property(x => x.FechaHoraJoin).HasColumnName("ParFchaHoraJoin").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            builder.Property(x => x.UltimaActividad).HasColumnName("ParUltimaActividad").HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            builder.HasIndex(x => new { x.SesionMesaId, x.AnonDeviceId });
+            builder.HasIndex(x => x.UltimaActividad);
+            
+            builder.HasOne(x => x.SesionMesa)
+                .WithMany(s => s.Participantes)
+                .HasForeignKey(x => x.SesionMesaId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
+            builder.HasOne(x => x.AnonDevice)
+                .WithMany(d => d.Participantes)
+                .HasForeignKey(x => x.AnonDeviceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

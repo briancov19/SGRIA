@@ -77,11 +77,12 @@ public class RestaurantesController : ControllerBase
     public async Task<IActionResult> GetRanking(
         [FromRoute] int id,
         [FromQuery] string periodo = "7d",
+        [FromQuery] decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         try
         {
-            var ranking = await _estadisticasService.GetRankingAsync(id, periodo, ct);
+            var ranking = await _estadisticasService.GetRankingAsync(id, periodo, minConfianza, ct);
             return Ok(ranking);
         }
         catch (ArgumentException ex)
@@ -97,6 +98,7 @@ public class RestaurantesController : ControllerBase
     public async Task<IActionResult> GetTrending(
         [FromRoute] int id,
         [FromQuery] int min = 30,
+        [FromQuery] decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         if (min <= 0 || min > 1440)
@@ -104,7 +106,7 @@ public class RestaurantesController : ControllerBase
             return BadRequest(new { error = "El parámetro 'min' debe estar entre 1 y 1440" });
         }
 
-        var trending = await _estadisticasService.GetTrendingAsync(id, min, ct);
+        var trending = await _estadisticasService.GetTrendingAsync(id, min, minConfianza, ct);
         return Ok(trending);
     }
 
@@ -115,6 +117,7 @@ public class RestaurantesController : ControllerBase
     public async Task<IActionResult> GetRecomendados(
         [FromRoute] int id,
         [FromQuery] int dias = 30,
+        [FromQuery] decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         if (dias <= 0 || dias > 365)
@@ -122,7 +125,7 @@ public class RestaurantesController : ControllerBase
             return BadRequest(new { error = "El parámetro 'dias' debe estar entre 1 y 365" });
         }
 
-        var recomendados = await _estadisticasService.GetRecomendadosAsync(id, dias, ct);
+        var recomendados = await _estadisticasService.GetRecomendadosAsync(id, dias, minConfianza, ct);
         return Ok(recomendados);
     }
 

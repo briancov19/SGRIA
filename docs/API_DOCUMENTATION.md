@@ -113,9 +113,14 @@ Confirma que un cliente pidió un item del menú en una sesión específica.
 }
 ```
 
+**Headers:**
+- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima
+
 **Errores:**
 - `400 Bad Request` - Sesión cerrada, item no encontrado o inactivo
 - `404 Not Found` - Sesión no encontrada
+- `409 Conflict` - Sesión expirada (sin actividad reciente)
+- `429 Too Many Requests` - Límite de pedidos excedido
 
 **Ejemplo cURL:**
 ```bash
@@ -192,8 +197,13 @@ Registra o actualiza el rating de un pedido. Permite calificar con 👍 (1), �
 }
 ```
 
+**Headers:**
+- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima
+
 **Errores:**
 - `400 Bad Request` - Puntaje inválido (debe ser -1, 0 o 1) o pedido no encontrado
+- `409 Conflict` - Sesión expirada (sin actividad reciente)
+- `429 Too Many Requests` - Límite de ratings excedido
 
 **Ejemplo cURL:**
 ```bash
@@ -222,6 +232,7 @@ Obtiene el ranking de platos más pedidos en un período específico.
 **Parámetros:**
 - `id` (path, int, requerido) - ID del restaurante
 - `periodo` (query, string, opcional) - Período: `1d`, `7d`, `30d`, `90d` (default: `7d`)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
 **Valores de Período:**
 - `1d` o `1dia` o `today` - Últimas 24 horas
@@ -290,6 +301,7 @@ Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
 **Parámetros:**
 - `id` (path, int, requerido) - ID del restaurante
 - `min` (query, int, opcional) - Minutos hacia atrás (default: 30, máximo: 1440)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
 **Respuesta Exitosa (200 OK):**
 ```json
@@ -348,6 +360,7 @@ Obtiene el ranking de platos más recomendados basado en el promedio de ratings.
 **Parámetros:**
 - `id` (path, int, requerido) - ID del restaurante
 - `dias` (query, int, opcional) - Días hacia atrás (default: 30, máximo: 365)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
 **Respuesta Exitosa (200 OK):**
 ```json
@@ -529,6 +542,8 @@ Obtiene el feed completo (trending, ranking, recomendados) para una mesa desde s
 - `periodo` (query, string, opcional) - Período para ranking: `1d`, `7d`, `30d`, `90d` (default: `7d`)
 - `dias` (query, int, opcional) - Días para recomendados (default: 30, máximo: 365)
 
+**Nota:** El feed público filtra automáticamente pedidos con confianza < 0.3 (configurable).
+
 **Respuesta Exitosa (200 OK):**
 ```json
 {
@@ -572,6 +587,8 @@ Obtiene el feed completo (trending, ranking, recomendados) para una mesa desde s
 }
 ```
 
+**Nota:** El feed siempre filtra pedidos con confianza < 0.3 para mostrar solo contenido confiable.
+
 **Errores:**
 - `400 Bad Request` - Parámetros inválidos
 - `404 Not Found` - QR token no encontrado
@@ -612,6 +629,9 @@ Obtiene estadísticas sociales detalladas de un item de menú específico.
   "ratingsNegativos": 2
 }
 ```
+
+**Parámetros Adicionales:**
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
 **Errores:**
 - `400 Bad Request` - Parámetros inválidos
@@ -710,14 +730,55 @@ curl -X POST "http://localhost:5000/api/sesiones/1/items/1/tags" \
 - `201 Created` - Recurso creado exitosamente
 - `400 Bad Request` - Solicitud inválida (validación fallida)
 - `404 Not Found` - Recurso no encontrado
+- `409 Conflict` - Conflicto de estado (ej: sesión expirada, mesa no activa)
+- `429 Too Many Requests` - Límite de rate limiting excedido
 - `500 Internal Server Error` - Error del servidor
 
-## 🔒 Seguridad
+### Códigos Específicos de Anti-Abuso
+
+#### 429 Too Many Requests
+Se devuelve cuando se excede el límite de rate limiting:
+```json
+{
+  "error": "Límite de pedidos excedido. Máximo 10 pedidos cada 10 minutos."
+}
+```
+
+#### 409 Conflict (Sesión Expirada)
+Se devuelve cuando se intenta crear un pedido/rating con una sesión que no tiene actividad reciente:
+```json
+{
+  "error": "Sesión no válida o expirada. Por favor, escanea el QR nuevamente."
+}
+```
+
+## 🔒 Seguridad y Anti-Abuso
 
 - ✅ **Sin autenticación** - Todo es anónimo
 - ✅ **No se exponen IDs internos** - Se usan QR tokens en lugar de IDs de mesa
 - ✅ **Validaciones** - Todas las entradas son validadas
 - ✅ **UTC** - Todas las fechas están en UTC
+- ✅ **Rate Limiting** - Límites por participante para prevenir spam
+- ✅ **Score de Confianza** - Cada pedido tiene un score de confianza (0.0-1.0)
+- ✅ **Protección QR** - Validación de actividad reciente para crear pedidos/ratings
+
+### Header X-Client-Id
+
+Para endpoints que crean o modifican datos, se recomienda enviar el header `X-Client-Id`:
+
+- **Tipo:** String (GUID recomendado)
+- **Obligatorio:** No (pero recomendado para mejor experiencia)
+- **Comportamiento:**
+  - Si no se envía, el servidor genera uno y lo devuelve en el header de respuesta
+  - El frontend debe guardarlo en `localStorage` y reutilizarlo
+  - Se usa para identificar anónimamente el dispositivo y aplicar rate limiting
+
+**Ejemplo:**
+```http
+X-Client-Id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Ver documentación completa:** [Confianza y Anti-Abuso](./CONFIANZA_ANTI_ABUSO.md)
 
 ## 📚 Swagger
 

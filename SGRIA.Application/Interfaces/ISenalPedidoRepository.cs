@@ -6,4 +6,5 @@ public interface ISenalPedidoRepository
 {
     Task<SenalPedido?> GetByIdAsync(int id, CancellationToken ct);
     Task<SenalPedido> CreateAsync(SenalPedido pedido, CancellationToken ct);
+    Task<int> CountBySesionAsync(int sesionId, CancellationToken ct);
 }

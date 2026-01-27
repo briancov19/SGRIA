@@ -37,7 +37,16 @@ public class MesasQrController : ControllerBase
     {
         try
         {
-            var sesion = await _sesionService.CrearOReutilizarSesionAsync(qrToken, dto, ct);
+            var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
+            var sesion = await _sesionService.CrearOReutilizarSesionAsync(qrToken, clientId, dto, ct);
+            
+            // Devolver X-Client-Id si no estaba presente (generar nuevo GUID)
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                var nuevoClientId = Guid.NewGuid().ToString();
+                Response.Headers["X-Client-Id"] = nuevoClientId;
+            }
+            
             return Ok(sesion);
         }
         catch (ArgumentException ex)

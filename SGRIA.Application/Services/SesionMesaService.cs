@@ -8,20 +8,27 @@ public class SesionMesaService
 {
     private readonly ISesionMesaRepository _sesionRepo;
     private readonly IMesaRepository _mesaRepo;
+    private readonly AnonDeviceService _deviceService;
+    private readonly ISesionParticipanteRepository _participanteRepo;
     private readonly int _timeoutMinutos;
 
     public SesionMesaService(
         ISesionMesaRepository sesionRepo,
         IMesaRepository mesaRepo,
+        AnonDeviceService deviceService,
+        ISesionParticipanteRepository participanteRepo,
         int timeoutMinutos = 90)
     {
         _sesionRepo = sesionRepo;
         _mesaRepo = mesaRepo;
+        _deviceService = deviceService;
+        _participanteRepo = participanteRepo;
         _timeoutMinutos = timeoutMinutos;
     }
 
     public async Task<SesionMesaDto> CrearOReutilizarSesionAsync(
         string qrToken,
+        string? clientId,
         SesionMesaCreateDto? dto,
         CancellationToken ct)
     {
@@ -37,43 +44,90 @@ public class SesionMesaService
             throw new InvalidOperationException("La mesa no está activa");
         }
 
+        // Obtener o crear dispositivo anónimo
+        AnonDevice? device = null;
+        SesionParticipante? participante = null;
+        
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
+        }
+
         // Buscar sesión activa con actividad reciente (considerando timeout)
         var sesionActiva = await _sesionRepo.GetActivaConActividadRecienteAsync(
             mesa.Id,
             _timeoutMinutos,
             ct);
 
+        SesionMesa sesionFinal;
+        
         if (sesionActiva != null)
         {
             // Reutilizar sesión existente (tiene actividad reciente)
-            return new SesionMesaDto(
-                sesionActiva.Id,
-                sesionActiva.MesaId,
-                sesionActiva.FechaHoraInicio,
-                sesionActiva.FechaHoraFin,
-                sesionActiva.CantidadPersonas,
-                sesionActiva.Origen
-            );
+            sesionFinal = sesionActiva;
+            
+            // Asociar participante si existe
+            if (device != null)
+            {
+                participante = await _participanteRepo.GetBySesionAndDeviceAsync(
+                    sesionActiva.Id, 
+                    device.Id, 
+                    ct);
+                
+                if (participante == null)
+                {
+                    // Crear nuevo participante para esta sesión
+                    participante = new SesionParticipante
+                    {
+                        SesionMesaId = sesionActiva.Id,
+                        AnonDeviceId = device.Id,
+                        FechaHoraJoin = DateTime.UtcNow,
+                        UltimaActividad = DateTime.UtcNow
+                    };
+                    participante = await _participanteRepo.CreateAsync(participante, ct);
+                }
+                else
+                {
+                    // Actualizar última actividad
+                    participante.UltimaActividad = DateTime.UtcNow;
+                    participante = await _participanteRepo.UpdateAsync(participante, ct);
+                }
+            }
+        }
+        else
+        {
+            // Crear nueva sesión (no hay sesión activa o la existente expiró)
+            var nuevaSesion = new SesionMesa
+            {
+                MesaId = mesa.Id,
+                CantidadPersonas = dto?.CantidadPersonas,
+                Origen = dto?.Origen ?? "QR",
+                FechaHoraInicio = DateTime.UtcNow
+            };
+
+            sesionFinal = await _sesionRepo.CreateAsync(nuevaSesion, ct);
+            
+            // Asociar participante si existe
+            if (device != null)
+            {
+                participante = new SesionParticipante
+                {
+                    SesionMesaId = sesionFinal.Id,
+                    AnonDeviceId = device.Id,
+                    FechaHoraJoin = DateTime.UtcNow,
+                    UltimaActividad = DateTime.UtcNow
+                };
+                participante = await _participanteRepo.CreateAsync(participante, ct);
+            }
         }
 
-        // Crear nueva sesión (no hay sesión activa o la existente expiró)
-        var nuevaSesion = new SesionMesa
-        {
-            MesaId = mesa.Id,
-            CantidadPersonas = dto?.CantidadPersonas,
-            Origen = dto?.Origen ?? "QR",
-            FechaHoraInicio = DateTime.UtcNow
-        };
-
-        var sesionCreada = await _sesionRepo.CreateAsync(nuevaSesion, ct);
-
         return new SesionMesaDto(
-            sesionCreada.Id,
-            sesionCreada.MesaId,
-            sesionCreada.FechaHoraInicio,
-            sesionCreada.FechaHoraFin,
-            sesionCreada.CantidadPersonas,
-            sesionCreada.Origen
+            sesionFinal.Id,
+            sesionFinal.MesaId,
+            sesionFinal.FechaHoraInicio,
+            sesionFinal.FechaHoraFin,
+            sesionFinal.CantidadPersonas,
+            sesionFinal.Origen
         );
     }
 

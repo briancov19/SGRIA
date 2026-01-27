@@ -9,19 +9,32 @@ public class SenalPedidoService
     private readonly ISenalPedidoRepository _pedidoRepo;
     private readonly ISesionMesaRepository _sesionRepo;
     private readonly IItemMenuRepository _itemRepo;
+    private readonly AnonDeviceService _deviceService;
+    private readonly ISesionParticipanteRepository _participanteRepo;
+    private readonly ConfianzaService _confianzaService;
+    private readonly RateLimitService _rateLimitService;
 
     public SenalPedidoService(
         ISenalPedidoRepository pedidoRepo,
         ISesionMesaRepository sesionRepo,
-        IItemMenuRepository itemRepo)
+        IItemMenuRepository itemRepo,
+        AnonDeviceService deviceService,
+        ISesionParticipanteRepository participanteRepo,
+        ConfianzaService confianzaService,
+        RateLimitService rateLimitService)
     {
         _pedidoRepo = pedidoRepo;
         _sesionRepo = sesionRepo;
         _itemRepo = itemRepo;
+        _deviceService = deviceService;
+        _participanteRepo = participanteRepo;
+        _confianzaService = confianzaService;
+        _rateLimitService = rateLimitService;
     }
 
     public async Task<SenalPedidoDto> ConfirmarPedidoAsync(
         int sesionId,
+        string? clientId,
         SenalPedidoCreateDto dto,
         CancellationToken ct)
     {
@@ -35,6 +48,35 @@ public class SenalPedidoService
         if (sesion.FechaHoraFin.HasValue)
         {
             throw new InvalidOperationException("La sesión ya está cerrada");
+        }
+
+        // Validar actividad reciente del participante (protección QR)
+        SesionParticipante? participante = null;
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
+            participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
+                sesionId, 
+                device.DeviceHash, 
+                ct);
+            
+            if (participante != null)
+            {
+                // Validar que la última actividad sea reciente (máximo 10 minutos)
+                var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
+                if (minutosDesdeActividad > 10)
+                {
+                    throw new InvalidOperationException(
+                        "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
+                }
+
+                // Validar rate limiting
+                await _rateLimitService.ValidarLimitePedidosAsync(participante.Id, ct);
+                
+                // Actualizar última actividad
+                participante.UltimaActividad = DateTime.UtcNow;
+                await _participanteRepo.UpdateAsync(participante, ct);
+            }
         }
 
         // Validar item de menú
@@ -57,6 +99,15 @@ public class SenalPedidoService
                 $"Item restaurante: {item.RestauranteId}, Sesión restaurante: {sesion.Mesa.RestauranteId}");
         }
 
+        // Calcular confianza
+        // Contar pedidos de la sesión (cargar si no están cargados)
+        var totalPedidosEnSesion = await _pedidoRepo.CountBySesionAsync(sesionId, ct);
+        var confianza = _confianzaService.CalcularConfianza(
+            participante,
+            sesion,
+            totalPedidosEnSesion,
+            DateTime.UtcNow);
+
         // Crear señal de pedido
         var pedido = new SenalPedido
         {
@@ -64,7 +115,7 @@ public class SenalPedidoService
             ItemMenuId = dto.ItemMenuId,
             Cantidad = dto.Cantidad > 0 ? dto.Cantidad : 1,
             IngresadoPor = dto.IngresadoPor ?? "Cliente",
-            Confianza = dto.Confianza,
+            Confianza = confianza, // Usar confianza calculada
             FechaHoraConfirmacion = DateTime.UtcNow
         };
 

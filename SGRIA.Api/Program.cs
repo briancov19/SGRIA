@@ -27,6 +27,9 @@ builder.Services.AddScoped<TagRapidoService>();
 builder.Services.AddScoped<FeedService>();
 builder.Services.AddScoped<ItemSocialService>();
 builder.Services.AddScoped<TagVotoService>();
+builder.Services.AddScoped<AnonDeviceService>();
+builder.Services.AddScoped<ConfianzaService>();
+builder.Services.AddScoped<RateLimitService>();
 
 // 1) DbContext (Postgres)
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -45,6 +48,8 @@ builder.Services.AddScoped<IItemMenuAliasRepository, EfItemMenuAliasRepository>(
 builder.Services.AddScoped<ITagRapidoRepository, EfTagRapidoRepository>();
 builder.Services.AddScoped<IItemSocialRepository, EfItemSocialRepository>();
 builder.Services.AddScoped<ITagVotoRepository, EfTagVotoRepository>();
+builder.Services.AddScoped<IAnonDeviceRepository, EfAnonDeviceRepository>();
+builder.Services.AddScoped<ISesionParticipanteRepository, EfSesionParticipanteRepository>();
 
 var app = builder.Build();
 

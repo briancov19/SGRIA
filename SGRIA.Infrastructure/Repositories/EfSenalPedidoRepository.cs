@@ -15,6 +15,7 @@ public class EfSenalPedidoRepository : ISenalPedidoRepository
         => _db.SenalesPedido
               .Include(p => p.ItemMenu)
               .Include(p => p.SesionMesa)
+              .ThenInclude(s => s.Mesa)
               .FirstOrDefaultAsync(x => x.Id == id, ct);
 
     public async Task<SenalPedido> CreateAsync(SenalPedido pedido, CancellationToken ct)
@@ -26,4 +27,8 @@ public class EfSenalPedidoRepository : ISenalPedidoRepository
         await _db.Entry(pedido).Reference(p => p.SesionMesa).LoadAsync(ct);
         return pedido;
     }
+
+    public Task<int> CountBySesionAsync(int sesionId, CancellationToken ct)
+        => _db.SenalesPedido
+              .CountAsync(p => p.SesionMesaId == sesionId, ct);
 }

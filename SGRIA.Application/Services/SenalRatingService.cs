@@ -8,17 +8,27 @@ public class SenalRatingService
 {
     private readonly ISenalRatingRepository _ratingRepo;
     private readonly ISenalPedidoRepository _pedidoRepo;
+    private readonly AnonDeviceService _deviceService;
+    private readonly ISesionParticipanteRepository _participanteRepo;
+    private readonly RateLimitService _rateLimitService;
 
     public SenalRatingService(
         ISenalRatingRepository ratingRepo,
-        ISenalPedidoRepository pedidoRepo)
+        ISenalPedidoRepository pedidoRepo,
+        AnonDeviceService deviceService,
+        ISesionParticipanteRepository participanteRepo,
+        RateLimitService rateLimitService)
     {
         _ratingRepo = ratingRepo;
         _pedidoRepo = pedidoRepo;
+        _deviceService = deviceService;
+        _participanteRepo = participanteRepo;
+        _rateLimitService = rateLimitService;
     }
 
     public async Task<SenalRatingDto> RegistrarRatingAsync(
         int pedidoId,
+        string? clientId,
         SenalRatingCreateDto dto,
         CancellationToken ct)
     {
@@ -33,6 +43,39 @@ public class SenalRatingService
         if (pedido == null)
         {
             throw new ArgumentException($"Pedido no encontrado: {pedidoId}");
+        }
+
+        // Validar actividad reciente del participante (protección QR)
+        SesionParticipante? participante = null;
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
+            participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
+                pedido.SesionMesaId, 
+                device.DeviceHash, 
+                ct);
+            
+            if (participante != null)
+            {
+                // Validar que la última actividad sea reciente (máximo 10 minutos)
+                var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
+                if (minutosDesdeActividad > 10)
+                {
+                    throw new InvalidOperationException(
+                        "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
+                }
+
+                // Validar rate limiting (solo para updates)
+                var ratingExistenteParaValidar = await _ratingRepo.GetByPedidoIdAsync(pedidoId, ct);
+                if (ratingExistenteParaValidar != null)
+                {
+                    await _rateLimitService.ValidarLimiteRatingsAsync(participante.Id, ct);
+                }
+                
+                // Actualizar última actividad
+                participante.UltimaActividad = DateTime.UtcNow;
+                await _participanteRepo.UpdateAsync(participante, ct);
+            }
         }
 
         // Verificar si ya existe un rating para este pedido

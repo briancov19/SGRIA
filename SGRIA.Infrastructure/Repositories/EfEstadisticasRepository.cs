@@ -16,6 +16,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
         DateTime fechaDesde,
         DateTime fechaHasta,
         int? top = null,
+        decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         // Paso 1: Agrupar pedidos por item de menú
@@ -23,6 +24,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
                           where p.ItemMenu.RestauranteId == restauranteId
                              && p.FechaHoraConfirmacion >= fechaDesde
                              && p.FechaHoraConfirmacion <= fechaHasta
+                             && (minConfianza == null || p.Confianza == null || p.Confianza >= minConfianza)
                           group p by new
                           {
                               p.ItemMenuId,
@@ -97,6 +99,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
     public async Task<List<ItemTrendingDto>> GetTrendingAsync(
         int restauranteId,
         int minutos,
+        decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         var desde = DateTime.UtcNow.AddMinutes(-minutos);
@@ -105,6 +108,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
         var pedidosQuery = from p in _db.SenalesPedido
                           where p.ItemMenu.RestauranteId == restauranteId
                              && p.FechaHoraConfirmacion >= desde
+                             && (minConfianza == null || p.Confianza == null || p.Confianza >= minConfianza)
                           group p by new
                           {
                               p.ItemMenuId,
@@ -144,6 +148,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
         DateTime fechaDesde,
         DateTime fechaHasta,
         int minimoRatings = 5,
+        decimal? minConfianza = null,
         CancellationToken ct = default)
     {
         var query = from r in _db.SenalesRating
@@ -151,6 +156,7 @@ public class EfEstadisticasRepository : IEstadisticasRepository
                     where p.ItemMenu.RestauranteId == restauranteId
                        && r.FechaHora >= fechaDesde
                        && r.FechaHora <= fechaHasta
+                       && (minConfianza == null || p.Confianza == null || p.Confianza >= minConfianza)
                     group r by new
                     {
                         p.ItemMenuId,

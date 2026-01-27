@@ -28,7 +28,15 @@ public class SesionesController : ControllerBase
     {
         try
         {
-            var pedido = await _pedidoService.ConfirmarPedidoAsync(sesionId, dto, ct);
+            var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
+            var pedido = await _pedidoService.ConfirmarPedidoAsync(sesionId, clientId, dto, ct);
+            
+            // Devolver X-Client-Id si no estaba presente
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                Response.Headers["X-Client-Id"] = Guid.NewGuid().ToString();
+            }
+            
             return CreatedAtAction(
                 nameof(GetPedido),
                 new { pedidoId = pedido.Id },
@@ -40,6 +48,16 @@ public class SesionesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            // 429 Too Many Requests para rate limiting
+            if (ex.Message.Contains("Límite") || ex.Message.Contains("excedido"))
+            {
+                return StatusCode(429, new { error = ex.Message });
+            }
+            // 403/409 para sesión expirada
+            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida"))
+            {
+                return StatusCode(409, new { error = ex.Message });
+            }
             return BadRequest(new { error = ex.Message });
         }
     }

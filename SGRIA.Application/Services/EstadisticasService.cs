@@ -15,7 +15,8 @@ public class EstadisticasService
     public async Task<RankingResponseDto> GetRankingAsync(
         int restauranteId,
         string periodo,
-        CancellationToken ct)
+        decimal? minConfianza = null,
+        CancellationToken ct = default)
     {
         var (fechaDesde, fechaHasta) = ParsePeriodo(periodo);
         fechaHasta = fechaHasta.AddDays(1).AddTicks(-1); // Incluir todo el último día
@@ -25,7 +26,8 @@ public class EstadisticasService
             fechaDesde,
             fechaHasta,
             top: null,
-            ct);
+            minConfianza: minConfianza,
+            ct: ct);
 
         return new RankingResponseDto(
             restauranteId,
@@ -39,11 +41,13 @@ public class EstadisticasService
     public async Task<TrendingResponseDto> GetTrendingAsync(
         int restauranteId,
         int minutos,
-        CancellationToken ct)
+        decimal? minConfianza = null,
+        CancellationToken ct = default)
     {
         var items = await _estadisticasRepo.GetTrendingAsync(
             restauranteId,
             minutos,
+            minConfianza,
             ct);
 
         return new TrendingResponseDto(
@@ -57,7 +61,8 @@ public class EstadisticasService
     public async Task<RecomendadosResponseDto> GetRecomendadosAsync(
         int restauranteId,
         int dias,
-        CancellationToken ct)
+        decimal? minConfianza = null,
+        CancellationToken ct = default)
     {
         var fechaHasta = DateTime.UtcNow;
         var fechaDesde = fechaHasta.AddDays(-dias);
@@ -67,6 +72,7 @@ public class EstadisticasService
             fechaDesde,
             fechaHasta,
             minimoRatings: 5,
+            minConfianza,
             ct);
 
         return new RecomendadosResponseDto(

@@ -14,4 +14,5 @@ public class SesionMesa
     public Mesa Mesa { get; set; } = default!;
     public ICollection<SenalPedido> SenalesPedido { get; set; } = new List<SenalPedido>();
     public ICollection<VotoTagItemMenu> VotosTag { get; set; } = new List<VotoTagItemMenu>();
+    public ICollection<SesionParticipante> Participantes { get; set; } = new List<SesionParticipante>();
 }
