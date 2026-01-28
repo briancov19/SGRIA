@@ -30,6 +30,7 @@ builder.Services.AddScoped<TagVotoService>();
 builder.Services.AddScoped<AnonDeviceService>();
 builder.Services.AddScoped<ConfianzaService>();
 builder.Services.AddScoped<RateLimitService>();
+builder.Services.AddScoped<SesionPublicaService>();
 
 // 1) DbContext (Postgres)
 builder.Services.AddDbContext<AppDbContext>(options =>

@@ -85,14 +85,18 @@ public class AppDbContext : DbContext
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).HasColumnName("SesId");
             builder.Property(x => x.MesaId).HasColumnName("SesMesId");
+            builder.Property(x => x.SesPublicToken).HasColumnName("SesPublicToken").HasMaxLength(36).IsRequired();
             builder.Property(x => x.FechaHoraInicio).HasColumnName("SesFchaHoraInicio").HasDefaultValueSql("CURRENT_TIMESTAMP");
             builder.Property(x => x.FechaHoraFin).HasColumnName("SesFchaHoraFin");
+            builder.Property(x => x.FechaHoraUltActividad).HasColumnName("SesFchaHoraUltActividad").HasDefaultValueSql("CURRENT_TIMESTAMP");
             builder.Property(x => x.CantidadPersonas).HasColumnName("SesCantidadPersonas");
             builder.Property(x => x.Origen).HasColumnName("SesOrigen").HasMaxLength(20).HasDefaultValue("QR");
 
             builder.HasIndex(x => x.MesaId);
             builder.HasIndex(x => x.FechaHoraInicio);
             builder.HasIndex(x => new { x.MesaId, x.FechaHoraFin });
+            builder.HasIndex(x => x.SesPublicToken).IsUnique();
+            builder.HasIndex(x => x.FechaHoraUltActividad);
             
             builder.HasOne(x => x.Mesa)
                 .WithMany(m => m.Sesiones)

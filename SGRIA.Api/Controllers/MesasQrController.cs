@@ -9,24 +9,22 @@ namespace SGRIA.Api.Controllers;
 public class MesasQrController : ControllerBase
 {
     private readonly MesaQrService _mesaQrService;
-    private readonly SesionMesaService _sesionService;
+    private readonly SesionPublicaService _sesionPublicaService;
     private readonly FeedService _feedService;
 
     public MesasQrController(
         MesaQrService mesaQrService,
-        SesionMesaService sesionService,
+        SesionPublicaService sesionPublicaService,
         FeedService feedService)
     {
         _mesaQrService = mesaQrService;
-        _sesionService = sesionService;
+        _sesionPublicaService = sesionPublicaService;
         _feedService = feedService;
     }
 
     /// <summary>
-    /// Resuelve una mesa desde su QR token y crea o reutiliza una sesión activa
-    /// </summary>
-    /// <summary>
     /// Resuelve una mesa desde su QR token y crea o reutiliza una sesión activa.
+    /// Devuelve un token público (sesPublicToken) que debe usarse en endpoints públicos posteriores.
     /// Si la sesión existente tiene más de 90 minutos sin actividad, se cierra automáticamente.
     /// </summary>
     [HttpPost("qr/{qrToken}/sesion")]
@@ -38,7 +36,7 @@ public class MesasQrController : ControllerBase
         try
         {
             var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
-            var sesion = await _sesionService.CrearOReutilizarSesionAsync(qrToken, clientId, dto, ct);
+            var sesion = await _sesionPublicaService.GetOrCreateSessionByQrTokenAsync(qrToken, clientId, dto, ct);
             
             // Devolver X-Client-Id si no estaba presente (generar nuevo GUID)
             if (string.IsNullOrWhiteSpace(clientId))
@@ -67,40 +65,4 @@ public class MesasQrController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Obtiene el feed completo (trending, ranking, recomendados) para una mesa desde su QR token.
-    /// Crea o reutiliza una sesión automáticamente.
-    /// </summary>
-    [HttpGet("qr/{qrToken}/feed")]
-    public async Task<IActionResult> GetFeed(
-        [FromRoute] string qrToken,
-        [FromQuery] int min = 30,
-        [FromQuery] string periodo = "7d",
-        [FromQuery] int dias = 30,
-        CancellationToken ct = default)
-    {
-        try
-        {
-            if (min <= 0 || min > 1440)
-                return BadRequest(new { error = "El parámetro 'min' debe estar entre 1 y 1440" });
-
-            if (dias <= 0 || dias > 365)
-                return BadRequest(new { error = "El parámetro 'dias' debe estar entre 1 y 365" });
-
-            var feed = await _feedService.GetFeedAsync(qrToken, min, periodo, dias, ct);
-            return Ok(feed);
-        }
-        catch (ArgumentException ex)
-        {
-            if (ex.Message.Contains("no encontrada"))
-                return NotFound(new { error = ex.Message });
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            if (ex.Message.Contains("no está activa"))
-                return Conflict(new { error = ex.Message });
-            return BadRequest(new { error = ex.Message });
-        }
-    }
 }

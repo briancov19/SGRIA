@@ -5,8 +5,20 @@ public class SesionMesa
     public int Id { get; set; }
     public int MesaId { get; set; }
 
+    /// <summary>
+    /// Token público único (GUID) para identificar la sesión en APIs públicas.
+    /// Evita enumeración de sesionId interno.
+    /// </summary>
+    public string SesPublicToken { get; set; } = default!;
+
     public DateTime FechaHoraInicio { get; set; } = DateTime.UtcNow;
     public DateTime? FechaHoraFin { get; set; }
+
+    /// <summary>
+    /// Última actividad registrada en la sesión (UTC).
+    /// Se actualiza en cada acción del cliente (pedido, rating, etc.).
+    /// </summary>
+    public DateTime FechaHoraUltActividad { get; set; } = DateTime.UtcNow;
 
     public int? CantidadPersonas { get; set; }
     public string? Origen { get; set; } // "QR", "Manual", "Desconocido"

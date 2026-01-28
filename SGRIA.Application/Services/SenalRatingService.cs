@@ -11,19 +11,22 @@ public class SenalRatingService
     private readonly AnonDeviceService _deviceService;
     private readonly ISesionParticipanteRepository _participanteRepo;
     private readonly RateLimitService _rateLimitService;
+    private readonly SesionPublicaService _sesionPublicaService;
 
     public SenalRatingService(
         ISenalRatingRepository ratingRepo,
         ISenalPedidoRepository pedidoRepo,
         AnonDeviceService deviceService,
         ISesionParticipanteRepository participanteRepo,
-        RateLimitService rateLimitService)
+        RateLimitService rateLimitService,
+        SesionPublicaService sesionPublicaService)
     {
         _ratingRepo = ratingRepo;
         _pedidoRepo = pedidoRepo;
         _deviceService = deviceService;
         _participanteRepo = participanteRepo;
         _rateLimitService = rateLimitService;
+        _sesionPublicaService = sesionPublicaService;
     }
 
     public async Task<SenalRatingDto> RegistrarRatingAsync(
@@ -38,11 +41,28 @@ public class SenalRatingService
             throw new ArgumentException("El puntaje debe ser -1, 0 o 1");
         }
 
-        // Validar pedido
+        // Validar pedido (debe incluir sesión y mesa)
         var pedido = await _pedidoRepo.GetByIdAsync(pedidoId, ct);
         if (pedido == null)
         {
             throw new ArgumentException($"Pedido no encontrado: {pedidoId}");
+        }
+
+        // Obtener sesión desde el pedido (ya está cargado con Include)
+        var sesion = pedido.SesionMesa;
+        if (sesion == null)
+        {
+            throw new ArgumentException($"Sesión no encontrada para el pedido: {pedidoId}");
+        }
+
+        // Validar sesión activa usando el servicio público (valida timeout)
+        try
+        {
+            await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesion.SesPublicToken, ct);
+        }
+        catch (InvalidOperationException)
+        {
+            throw new InvalidOperationException("Sesión expirada. Por favor, re-escanea el QR.");
         }
 
         // Validar actividad reciente del participante (protección QR)
@@ -77,6 +97,9 @@ public class SenalRatingService
                 await _participanteRepo.UpdateAsync(participante, ct);
             }
         }
+        
+        // Actualizar última actividad de la sesión (touch)
+        await _sesionPublicaService.TouchSessionAsync(sesion.Id, ct);
 
         // Verificar si ya existe un rating para este pedido
         var ratingExistente = await _ratingRepo.GetByPedidoIdAsync(pedidoId, ct);

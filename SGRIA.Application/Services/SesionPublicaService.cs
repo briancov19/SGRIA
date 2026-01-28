@@ -1,10 +1,15 @@
+using Microsoft.Extensions.Configuration;
 using SGRIA.Application.DTOs;
 using SGRIA.Application.Interfaces;
 using SGRIA.Domain.Entities;
 
 namespace SGRIA.Application.Services;
 
-public class SesionMesaService
+/// <summary>
+/// Servicio centralizado para manejar sesiones públicas usando tokens públicos.
+/// Evita enumeración de IDs internos y centraliza la lógica de validación de sesiones.
+/// </summary>
+public class SesionPublicaService
 {
     private readonly ISesionMesaRepository _sesionRepo;
     private readonly IMesaRepository _mesaRepo;
@@ -12,24 +17,27 @@ public class SesionMesaService
     private readonly ISesionParticipanteRepository _participanteRepo;
     private readonly int _timeoutMinutos;
 
-    public SesionMesaService(
+    public SesionPublicaService(
         ISesionMesaRepository sesionRepo,
         IMesaRepository mesaRepo,
         AnonDeviceService deviceService,
         ISesionParticipanteRepository participanteRepo,
-        int timeoutMinutos = 90)
+        IConfiguration configuration)
     {
         _sesionRepo = sesionRepo;
         _mesaRepo = mesaRepo;
         _deviceService = deviceService;
         _participanteRepo = participanteRepo;
-        _timeoutMinutos = timeoutMinutos;
+        _timeoutMinutos = int.Parse(configuration["Session:TimeoutMinutes"] ?? "90");
     }
 
-    public async Task<SesionMesaDto> CrearOReutilizarSesionAsync(
+    /// <summary>
+    /// Obtiene o crea una sesión desde un QR token. Devuelve el token público.
+    /// </summary>
+    public async Task<SesionPublicaDto> GetOrCreateSessionByQrTokenAsync(
         string qrToken,
         string? clientId,
-        SesionMesaCreateDto? dto,
+        SesionMesaCreateDto? request,
         CancellationToken ct)
     {
         // Buscar mesa por QR token
@@ -92,7 +100,7 @@ public class SesionMesaService
                 }
                 else
                 {
-                    // Actualizar última actividad
+                    // Actualizar última actividad del participante
                     participante.UltimaActividad = DateTime.UtcNow;
                     participante = await _participanteRepo.UpdateAsync(participante, ct);
                 }
@@ -105,8 +113,8 @@ public class SesionMesaService
             {
                 MesaId = mesa.Id,
                 SesPublicToken = Guid.NewGuid().ToString(), // Generar token único
-                CantidadPersonas = dto?.CantidadPersonas,
-                Origen = dto?.Origen ?? "QR",
+                CantidadPersonas = request?.CantidadPersonas,
+                Origen = request?.Origen ?? "QR",
                 FechaHoraInicio = DateTime.UtcNow,
                 FechaHoraUltActividad = DateTime.UtcNow
             };
@@ -127,32 +135,61 @@ public class SesionMesaService
             }
         }
 
-        return new SesionMesaDto(
-            sesionFinal.Id,
-            sesionFinal.MesaId,
+        return new SesionPublicaDto(
             sesionFinal.SesPublicToken,
             sesionFinal.FechaHoraInicio,
             sesionFinal.FechaHoraFin,
-            sesionFinal.FechaHoraUltActividad,
             sesionFinal.CantidadPersonas,
             sesionFinal.Origen
         );
     }
 
-    public async Task<SesionMesaDto?> GetByIdAsync(int id, CancellationToken ct)
+    /// <summary>
+    /// Obtiene una sesión activa por su token público. Valida timeout.
+    /// </summary>
+    public async Task<SesionMesa> GetActiveSessionByPublicTokenAsync(
+        string sesPublicToken,
+        CancellationToken ct)
     {
-        var sesion = await _sesionRepo.GetByIdAsync(id, ct);
-        if (sesion == null) return null;
+        var sesion = await _sesionRepo.GetByPublicTokenAsync(sesPublicToken, ct);
+        if (sesion == null)
+        {
+            throw new ArgumentException($"Sesión no encontrada con token: {sesPublicToken}");
+        }
 
-        return new SesionMesaDto(
-            sesion.Id,
-            sesion.MesaId,
-            sesion.SesPublicToken,
-            sesion.FechaHoraInicio,
-            sesion.FechaHoraFin,
-            sesion.FechaHoraUltActividad,
-            sesion.CantidadPersonas,
-            sesion.Origen
-        );
+        // Validar que la sesión esté activa
+        if (sesion.FechaHoraFin.HasValue)
+        {
+            throw new InvalidOperationException("La sesión ya está cerrada");
+        }
+
+        // Validar timeout
+        var ahora = DateTime.UtcNow;
+        var fechaLimite = ahora.AddMinutes(-_timeoutMinutos);
+        
+        if (sesion.FechaHoraUltActividad < fechaLimite)
+        {
+            // Sesión expirada, cerrarla
+            sesion.FechaHoraFin = sesion.FechaHoraUltActividad.AddMinutes(_timeoutMinutos);
+            await _sesionRepo.UpdateAsync(sesion, ct);
+            throw new InvalidOperationException("Sesión expirada. Por favor, re-escanea el QR.");
+        }
+
+        return sesion;
+    }
+
+    /// <summary>
+    /// Actualiza la última actividad de una sesión (touch).
+    /// </summary>
+    public async Task TouchSessionAsync(int sesionId, CancellationToken ct)
+    {
+        var sesion = await _sesionRepo.GetByIdAsync(sesionId, ct);
+        if (sesion == null)
+        {
+            throw new ArgumentException($"Sesión no encontrada: {sesionId}");
+        }
+
+        sesion.FechaHoraUltActividad = DateTime.UtcNow;
+        await _sesionRepo.UpdateAsync(sesion, ct);
     }
 }

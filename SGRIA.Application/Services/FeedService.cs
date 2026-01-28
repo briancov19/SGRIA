@@ -6,39 +6,36 @@ namespace SGRIA.Application.Services;
 
 public class FeedService
 {
-    private readonly SesionMesaService _sesionService;
+    private readonly SesionPublicaService _sesionPublicaService;
     private readonly EstadisticasService _estadisticasService;
-    private readonly IMesaRepository _mesaRepo;
     private readonly decimal _minConfianzaFeedPublico;
 
     public FeedService(
-        SesionMesaService sesionService,
+        SesionPublicaService sesionPublicaService,
         EstadisticasService estadisticasService,
-        IMesaRepository mesaRepo,
         IConfiguration configuration)
     {
-        _sesionService = sesionService;
+        _sesionPublicaService = sesionPublicaService;
         _estadisticasService = estadisticasService;
-        _mesaRepo = mesaRepo;
         _minConfianzaFeedPublico = decimal.Parse(configuration["AntiAbuse:MinConfianzaFeedPublico"] ?? "0.3");
     }
 
-    public async Task<FeedResponseDto> GetFeedAsync(
-        string qrToken,
+    /// <summary>
+    /// Obtiene el feed completo desde un token público de sesión.
+    /// El restaurante se obtiene desde sesión → mesa → restaurante.
+    /// </summary>
+    public async Task<FeedResponseDto> GetFeedPorTokenAsync(
+        string sesPublicToken,
         int minutos = 30,
         string periodo = "7d",
         int dias = 30,
         CancellationToken ct = default)
     {
-        // Resolver mesa y crear/reutilizar sesión (feed no requiere clientId, es solo lectura)
-        var sesion = await _sesionService.CrearOReutilizarSesionAsync(qrToken, null, null, ct);
+        // Validar sesión activa y no expirada
+        var sesion = await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesPublicToken, ct);
         
-        // Obtener restaurante desde la mesa
-        var mesa = await _mesaRepo.GetByQrTokenAsync(qrToken, ct);
-        if (mesa == null)
-            throw new InvalidOperationException("Mesa no encontrada después de crear sesión");
-
-        var restauranteId = mesa.RestauranteId;
+        // Obtener restaurante desde la sesión (ya está cargado con Include)
+        var restauranteId = sesion.Mesa.RestauranteId;
 
         // Obtener todas las estadísticas en paralelo con confianza mínima para feed público
         var trendingTask = _estadisticasService.GetTrendingAsync(restauranteId, minutos, _minConfianzaFeedPublico, ct);
@@ -53,7 +50,7 @@ public class FeedService
 
         return new FeedResponseDto(
             DateTime.UtcNow,
-            sesion.Id,
+            sesion.SesPublicToken,
             trending.Items,
             ranking.Items,
             recomendados.Items

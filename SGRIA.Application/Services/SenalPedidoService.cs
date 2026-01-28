@@ -13,6 +13,7 @@ public class SenalPedidoService
     private readonly ISesionParticipanteRepository _participanteRepo;
     private readonly ConfianzaService _confianzaService;
     private readonly RateLimitService _rateLimitService;
+    private readonly SesionPublicaService _sesionPublicaService;
 
     public SenalPedidoService(
         ISenalPedidoRepository pedidoRepo,
@@ -21,7 +22,8 @@ public class SenalPedidoService
         AnonDeviceService deviceService,
         ISesionParticipanteRepository participanteRepo,
         ConfianzaService confianzaService,
-        RateLimitService rateLimitService)
+        RateLimitService rateLimitService,
+        SesionPublicaService sesionPublicaService)
     {
         _pedidoRepo = pedidoRepo;
         _sesionRepo = sesionRepo;
@@ -30,25 +32,20 @@ public class SenalPedidoService
         _participanteRepo = participanteRepo;
         _confianzaService = confianzaService;
         _rateLimitService = rateLimitService;
+        _sesionPublicaService = sesionPublicaService;
     }
 
-    public async Task<SenalPedidoDto> ConfirmarPedidoAsync(
-        int sesionId,
+    /// <summary>
+    /// Confirma un pedido usando el token público de la sesión.
+    /// </summary>
+    public async Task<SenalPedidoDto> ConfirmarPedidoPorTokenAsync(
+        string sesPublicToken,
         string? clientId,
         SenalPedidoCreateDto dto,
         CancellationToken ct)
     {
-        // Validar sesión
-        var sesion = await _sesionRepo.GetByIdAsync(sesionId, ct);
-        if (sesion == null)
-        {
-            throw new ArgumentException($"Sesión no encontrada: {sesionId}");
-        }
-
-        if (sesion.FechaHoraFin.HasValue)
-        {
-            throw new InvalidOperationException("La sesión ya está cerrada");
-        }
+        // Validar sesión activa y no expirada usando token público
+        var sesion = await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesPublicToken, ct);
 
         // Validar actividad reciente del participante (protección QR)
         SesionParticipante? participante = null;
@@ -56,7 +53,7 @@ public class SenalPedidoService
         {
             var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
             participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
-                sesionId, 
+                sesion.Id, 
                 device.DeviceHash, 
                 ct);
             
@@ -101,7 +98,7 @@ public class SenalPedidoService
 
         // Calcular confianza
         // Contar pedidos de la sesión (cargar si no están cargados)
-        var totalPedidosEnSesion = await _pedidoRepo.CountBySesionAsync(sesionId, ct);
+        var totalPedidosEnSesion = await _pedidoRepo.CountBySesionAsync(sesion.Id, ct);
         var confianza = _confianzaService.CalcularConfianza(
             participante,
             sesion,
@@ -111,7 +108,7 @@ public class SenalPedidoService
         // Crear señal de pedido
         var pedido = new SenalPedido
         {
-            SesionMesaId = sesionId,
+            SesionMesaId = sesion.Id,
             ItemMenuId = dto.ItemMenuId,
             Cantidad = dto.Cantidad > 0 ? dto.Cantidad : 1,
             IngresadoPor = dto.IngresadoPor ?? "Cliente",
@@ -120,6 +117,9 @@ public class SenalPedidoService
         };
 
         var pedidoCreado = await _pedidoRepo.CreateAsync(pedido, ct);
+        
+        // Actualizar última actividad de la sesión (touch)
+        await _sesionPublicaService.TouchSessionAsync(sesion.Id, ct);
 
         return new SenalPedidoDto(
             pedidoCreado.Id,

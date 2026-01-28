@@ -25,8 +25,7 @@ Content-Type: application/json
 **Response (200 OK):**
 ```json
 {
-  "id": 1,
-  "mesaId": 5,
+  "sesPublicToken": "550e8400-e29b-41d4-a716-446655440000",
   "fechaHoraInicio": "2026-01-25T20:00:00Z",
   "fechaHoraFin": null,
   "cantidadPersonas": 2,
@@ -35,8 +34,10 @@ Content-Type: application/json
 ```
 
 **Notas:**
-- Si ya existe una sesión activa para esa mesa, la reutiliza
-- El `id` de la sesión se usará en los siguientes pasos
+- Si ya existe una sesión activa para esa mesa con actividad reciente, la reutiliza
+- Si la sesión expiró (más de 90 minutos sin actividad), se cierra automáticamente y se crea una nueva
+- El `sesPublicToken` (GUID) se usará en todos los endpoints públicos posteriores
+- **NO se expone** el `id` interno ni el `mesaId` por seguridad
 
 ---
 
@@ -44,8 +45,9 @@ Content-Type: application/json
 
 **Request:**
 ```bash
-POST http://localhost:5000/api/sesiones/1/pedidos
+POST http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/pedidos
 Content-Type: application/json
+X-Client-Id: 550e8400-e29b-41d4-a716-446655440000
 
 {
   "itemMenuId": 1,
@@ -53,6 +55,10 @@ Content-Type: application/json
   "ingresadoPor": "Cliente"
 }
 ```
+
+**Notas:**
+- Usa el `sesPublicToken` obtenido en el Paso 1
+- El header `X-Client-Id` es opcional pero recomendado para rate limiting
 
 **Response (201 Created):**
 ```json
@@ -107,7 +113,149 @@ Content-Type: application/json
 
 ---
 
-## 📊 Ejemplos de Estadísticas
+## 📱 Ejemplos de Feed y Estadísticas Públicas
+
+### Obtener Feed Completo desde Sesión
+
+Una vez que tienes el `sesPublicToken`, puedes obtener el feed completo (trending, ranking, recomendados) en un solo request.
+
+**Request:**
+```bash
+GET http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/feed?min=30&periodo=7d&dias=30
+```
+
+**Response (200 OK):**
+```json
+{
+  "timestamp": "2026-01-26T10:00:00Z",
+  "sesPublicToken": "550e8400-e29b-41d4-a716-446655440000",
+  "trending": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
+      "ultimoPedido": "2026-01-26T09:55:00Z"
+    }
+  ],
+  "ranking": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "precio": 15.99,
+      "totalPedidos": 45,
+      "totalCantidad": 67,
+      "promedioRating": 0.85,
+      "totalRatings": 40
+    }
+  ],
+  "recomendados": [
+    {
+      "itemMenuId": 2,
+      "nombre": "Pasta Carbonara",
+      "categoria": "Pastas",
+      "precio": 12.50,
+      "promedioRating": 0.92,
+      "totalRatings": 28,
+      "ratingsPositivos": 25,
+      "ratingsNeutros": 2,
+      "ratingsNegativos": 1
+    }
+  ]
+}
+```
+
+**Notas:**
+- El restaurante se obtiene automáticamente desde la sesión (no necesitas conocer el `restauranteId`)
+- El feed filtra automáticamente pedidos con confianza < 0.3
+- Si la sesión expiró, recibirás un error `409 Conflict`
+
+---
+
+### Obtener Trending desde Sesión
+
+**Request:**
+```bash
+GET http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/trending?min=30
+```
+
+**Response (200 OK):**
+```json
+{
+  "restauranteId": 1,
+  "minutos": 30,
+  "timestamp": "2026-01-25T20:15:00Z",
+  "items": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
+      "ultimoPedido": "2026-01-25T20:14:30Z"
+    }
+  ]
+}
+```
+
+---
+
+### Obtener Ranking desde Sesión
+
+**Request:**
+```bash
+GET http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/ranking?periodo=7d
+```
+
+**Response:** Ver formato en [Ranking de Platos Más Pedidos](#1-ver-ranking-de-platos-más-pedidos-últimos-7-días)
+
+---
+
+### Obtener Recomendados desde Sesión
+
+**Request:**
+```bash
+GET http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/recomendados?dias=30
+```
+
+**Response:** Ver formato en [Platos Más Recomendados](#3-ver-platos-más-recomendados)
+
+---
+
+### Crear o Actualizar Voto de Tag
+
+**Request:**
+```bash
+POST http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/items/1/tags
+Content-Type: application/json
+
+{
+  "tagId": 1,
+  "valor": 1
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 5,
+  "tagId": 1,
+  "tagNombre": "Pica",
+  "valor": 1,
+  "fechaHora": "2026-01-26T10:00:00Z"
+}
+```
+
+**Notas:**
+- Usa el `sesPublicToken` obtenido al crear/reutilizar la sesión
+- Si ya existe un voto para (sesion+item+tag), lo actualiza (upsert)
+- El valor debe ser `+1` o `-1`
+
+---
+
+## 📊 Ejemplos de Estadísticas (Admin)
 
 ### 1. Ver Ranking de Platos Más Pedidos (Últimos 7 días)
 

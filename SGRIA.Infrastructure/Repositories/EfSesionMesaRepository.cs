@@ -17,6 +17,12 @@ public class EfSesionMesaRepository : ISesionMesaRepository
               .ThenInclude(m => m.Restaurante)
               .FirstOrDefaultAsync(x => x.Id == id, ct);
 
+    public Task<SesionMesa?> GetByPublicTokenAsync(string sesPublicToken, CancellationToken ct)
+        => _db.SesionesMesa
+              .Include(s => s.Mesa)
+              .ThenInclude(m => m.Restaurante)
+              .FirstOrDefaultAsync(x => x.SesPublicToken == sesPublicToken, ct);
+
     public Task<SesionMesa?> GetActivaByMesaIdAsync(int mesaId, CancellationToken ct)
         => _db.SesionesMesa
               .Include(s => s.Mesa)
@@ -28,6 +34,14 @@ public class EfSesionMesaRepository : ISesionMesaRepository
     public async Task<SesionMesa> CreateAsync(SesionMesa sesion, CancellationToken ct)
     {
         sesion.FechaHoraInicio = DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(sesion.SesPublicToken))
+        {
+            sesion.SesPublicToken = Guid.NewGuid().ToString();
+        }
+        if (sesion.FechaHoraUltActividad == default)
+        {
+            sesion.FechaHoraUltActividad = DateTime.UtcNow;
+        }
         _db.SesionesMesa.Add(sesion);
         await _db.SaveChangesAsync(ct);
         await _db.Entry(sesion).Reference(s => s.Mesa).LoadAsync(ct);
@@ -80,21 +94,16 @@ public class EfSesionMesaRepository : ISesionMesaRepository
         if (sesionActiva == null)
             return null;
 
-        // Verificar última actividad
-        var ultimaActividad = await GetUltimaActividadAsync(sesionActiva.Id, ct);
-        
-        if (ultimaActividad.HasValue && ultimaActividad.Value >= fechaLimite)
+        // Verificar última actividad usando FechaHoraUltActividad (más eficiente)
+        if (sesionActiva.FechaHoraUltActividad >= fechaLimite)
         {
             // Sesión tiene actividad reciente, reutilizar
             return sesionActiva;
         }
 
         // Sesión muy vieja, cerrarla
-        if (ultimaActividad.HasValue)
-        {
-            sesionActiva.FechaHoraFin = ultimaActividad.Value.AddMinutes(minutosTimeout);
-            await UpdateAsync(sesionActiva, ct);
-        }
+        sesionActiva.FechaHoraFin = sesionActiva.FechaHoraUltActividad.AddMinutes(minutosTimeout);
+        await UpdateAsync(sesionActiva, ct);
 
         return null; // No hay sesión válida
     }

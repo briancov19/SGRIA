@@ -10,32 +10,33 @@ public class TagVotoService
     private readonly ISesionMesaRepository _sesionRepo;
     private readonly IItemMenuRepository _itemRepo;
     private readonly ITagRapidoRepository _tagRepo;
+    private readonly SesionPublicaService _sesionPublicaService;
 
     public TagVotoService(
         ITagVotoRepository votoRepo,
         ISesionMesaRepository sesionRepo,
         IItemMenuRepository itemRepo,
-        ITagRapidoRepository tagRepo)
+        ITagRapidoRepository tagRepo,
+        SesionPublicaService sesionPublicaService)
     {
         _votoRepo = votoRepo;
         _sesionRepo = sesionRepo;
         _itemRepo = itemRepo;
         _tagRepo = tagRepo;
+        _sesionPublicaService = sesionPublicaService;
     }
 
-    public async Task<TagVotoDto> CrearOActualizarVotoAsync(
-        int sesionId,
+    /// <summary>
+    /// Crea o actualiza un voto de tag usando el token público de la sesión.
+    /// </summary>
+    public async Task<TagVotoDto> CrearOActualizarVotoPorTokenAsync(
+        string sesPublicToken,
         int itemMenuId,
         TagVotoCreateDto dto,
         CancellationToken ct)
     {
-        // Validar sesión activa
-        var sesion = await _sesionRepo.GetByIdAsync(sesionId, ct);
-        if (sesion == null)
-            throw new ArgumentException($"Sesión no encontrada: {sesionId}");
-
-        if (sesion.FechaHoraFin.HasValue)
-            throw new InvalidOperationException("La sesión ya está cerrada");
+        // Validar sesión activa y no expirada usando token público
+        var sesion = await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesPublicToken, ct);
 
         // Validar item de menú
         var item = await _itemRepo.GetByIdAsync(itemMenuId, ct);
@@ -62,13 +63,16 @@ public class TagVotoService
         // Crear o actualizar voto (upsert)
         var voto = new VotoTagItemMenu
         {
-            SesionMesaId = sesionId,
+            SesionMesaId = sesion.Id,
             ItemMenuId = itemMenuId,
             TagRapidoId = dto.TagId,
             Valor = dto.Valor
         };
 
         var votoGuardado = await _votoRepo.CreateOrUpdateAsync(voto, ct);
+        
+        // Actualizar última actividad de la sesión (touch)
+        await _sesionPublicaService.TouchSessionAsync(sesion.Id, ct);
 
         return new TagVotoDto(
             votoGuardado.Id,

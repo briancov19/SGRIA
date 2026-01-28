@@ -11,10 +11,11 @@ http://localhost:5000/api
 ## 📋 Índice
 
 1. [Flujo Cliente (Anónimo)](#flujo-cliente-anónimo)
-2. [Estadísticas Restaurante](#estadísticas-restaurante)
-3. [Gestión de Mesas](#gestión-de-mesas)
-4. [Notificaciones](#notificaciones)
-5. [Feed Social y Tags](#feed-social-y-tags)
+2. [Estadísticas Públicas desde Sesión](#estadísticas-públicas-desde-sesión)
+3. [Estadísticas Restaurante (Admin)](#estadísticas-restaurante-admin)
+4. [Gestión de Mesas](#gestión-de-mesas)
+5. [Notificaciones](#notificaciones)
+6. [Feed Social y Tags](#feed-social-y-tags)
 
 ---
 
@@ -22,7 +23,7 @@ http://localhost:5000/api
 
 ### 1. Crear o Reutilizar Sesión desde QR
 
-Resuelve una mesa desde su QR token y crea una nueva sesión o reutiliza una sesión activa existente.
+Resuelve una mesa desde su QR token y crea una nueva sesión o reutiliza una sesión activa existente. **Devuelve un token público (`sesPublicToken`) que debe usarse en todos los endpoints públicos posteriores.**
 
 **Endpoint:** `POST /api/mesas/qr/{qrToken}/sesion`
 
@@ -44,8 +45,7 @@ Resuelve una mesa desde su QR token y crea una nueva sesión o reutiliza una ses
 **Respuesta Exitosa (200 OK):**
 ```json
 {
-  "id": 1,
-  "mesaId": 5,
+  "sesPublicToken": "550e8400-e29b-41d4-a716-446655440000",
   "fechaHoraInicio": "2026-01-25T20:00:00Z",
   "fechaHoraFin": null,
   "cantidadPersonas": 2,
@@ -53,14 +53,24 @@ Resuelve una mesa desde su QR token y crea una nueva sesión o reutiliza una ses
 }
 ```
 
+**⚠️ Importante:** 
+- El campo `sesPublicToken` es un GUID único que identifica la sesión públicamente
+- **NO se expone** el `id` interno ni el `mesaId` por seguridad
+- Este token debe guardarse y usarse en todos los endpoints públicos posteriores
+
+**Headers:**
+- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima. Si no se envía, el servidor genera uno y lo devuelve en la respuesta.
+
 **Errores:**
 - `400 Bad Request` - Mesa no encontrada o no activa
 - `404 Not Found` - QR token inválido
+- `409 Conflict` - Mesa no activa
 
 **Ejemplo cURL:**
 ```bash
 curl -X POST "http://localhost:5000/api/mesas/qr/MESA-001/sesion" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
     "cantidadPersonas": 2,
     "origen": "QR"
@@ -68,28 +78,28 @@ curl -X POST "http://localhost:5000/api/mesas/qr/MESA-001/sesion" \
 ```
 
 **Comportamiento:**
-- Si existe una sesión activa (sin `fechaHoraFin`) para esa mesa, la reutiliza
-- Si no existe, crea una nueva sesión
+- Si existe una sesión activa (sin `fechaHoraFin`) para esa mesa con actividad reciente (últimos 90 minutos), la reutiliza
+- Si la sesión existente expiró (más de 90 minutos sin actividad), se cierra automáticamente y se crea una nueva
 - Todas las fechas están en UTC
+- El timeout de sesión es configurable en `appsettings.json` bajo `Session:TimeoutMinutes` (default: 90)
 
 ---
 
 ### 2. Confirmar Pedido
 
-Confirma que un cliente pidió un item del menú en una sesión específica.
+Confirma que un cliente pidió un item del menú en una sesión específica usando el token público.
 
-**Endpoint:** `POST /api/sesiones/{sesionId}/pedidos`
+**Endpoint:** `POST /api/sesiones/{sesPublicToken}/pedidos`
 
 **Parámetros:**
-- `sesionId` (path, int, requerido) - ID de la sesión de mesa
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión (obtenido al crear/reutilizar sesión)
 
 **Body:**
 ```json
 {
   "itemMenuId": 1,
   "cantidad": 2,
-  "ingresadoPor": "Cliente",
-  "confianza": 0.95
+  "ingresadoPor": "Cliente"
 }
 ```
 
@@ -97,7 +107,6 @@ Confirma que un cliente pidió un item del menú en una sesión específica.
 - `itemMenuId` (int, requerido) - ID del item de menú pedido
 - `cantidad` (int, opcional) - Cantidad pedida (default: 1)
 - `ingresadoPor` (string, opcional) - "Cliente", "Mozo", "Sistema" (default: "Cliente")
-- `confianza` (decimal, opcional) - Nivel de confianza 0-1 (para futuro uso)
 
 **Respuesta Exitosa (201 Created):**
 ```json
@@ -114,18 +123,19 @@ Confirma que un cliente pidió un item del menú en una sesión específica.
 ```
 
 **Headers:**
-- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima
+- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima y rate limiting
 
 **Errores:**
-- `400 Bad Request` - Sesión cerrada, item no encontrado o inactivo
-- `404 Not Found` - Sesión no encontrada
-- `409 Conflict` - Sesión expirada (sin actividad reciente)
-- `429 Too Many Requests` - Límite de pedidos excedido
+- `400 Bad Request` - Item no encontrado, inactivo, o no pertenece al restaurante de la sesión
+- `404 Not Found` - Sesión no encontrada con el token proporcionado
+- `409 Conflict` - Sesión expirada o cerrada
+- `429 Too Many Requests` - Límite de pedidos excedido (máximo 10 pedidos cada 10 minutos por participante)
 
 **Ejemplo cURL:**
 ```bash
-curl -X POST "http://localhost:5000/api/sesiones/1/pedidos" \
+curl -X POST "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/pedidos" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
     "itemMenuId": 1,
     "cantidad": 2,
@@ -134,9 +144,11 @@ curl -X POST "http://localhost:5000/api/sesiones/1/pedidos" \
 ```
 
 **Validaciones:**
-- La sesión debe estar activa (sin `fechaHoraFin`)
-- El item de menú debe existir y estar activo
+- La sesión debe estar activa (sin `fechaHoraFin`) y no expirada (actividad reciente)
+- El item de menú debe existir, estar activo y pertenecer al restaurante de la sesión
 - La cantidad debe ser mayor a 0
+- Se valida actividad reciente del participante (máximo 10 minutos desde última actividad)
+- Se aplica rate limiting por participante
 
 ---
 
@@ -203,34 +215,150 @@ Registra o actualiza el rating de un pedido. Permite calificar con 👍 (1), �
 **Errores:**
 - `400 Bad Request` - Puntaje inválido (debe ser -1, 0 o 1) o pedido no encontrado
 - `409 Conflict` - Sesión expirada (sin actividad reciente)
-- `429 Too Many Requests` - Límite de ratings excedido
+- `429 Too Many Requests` - Límite de ratings excedido (máximo 10 ratings cada 10 minutos por participante)
 
 **Ejemplo cURL:**
 ```bash
 curl -X POST "http://localhost:5000/api/pedidos/10/rating" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
     "puntaje": 1
   }'
 ```
 
 **Comportamiento:**
-- Si el pedido ya tiene un rating, lo actualiza
+- Si el pedido ya tiene un rating, lo actualiza (upsert)
 - Si no tiene rating, crea uno nuevo
 - Un pedido solo puede tener un rating (relación 1:1)
+- Valida que la sesión del pedido esté activa y no expirada
+- Se valida actividad reciente del participante (máximo 10 minutos)
 
 ---
 
-## 📊 Estadísticas Restaurante
+## 📊 Estadísticas Públicas desde Sesión
 
-### 1. Ranking de Platos Más Pedidos
+Estos endpoints permiten obtener estadísticas usando el token público de la sesión. **El restaurante se obtiene automáticamente desde sesión → mesa → restaurante**, sin necesidad de exponer el `restauranteId`.
+
+### 1. Feed Completo
+
+Obtiene el feed completo (trending, ranking, recomendados) desde un token público de sesión.
+
+**Endpoint:** `GET /api/sesiones/{sesPublicToken}/feed`
+
+**Parámetros:**
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión
+- `min` (query, int, opcional) - Minutos para trending (default: 30, máximo: 1440)
+- `periodo` (query, string, opcional) - Período para ranking: `1d`, `7d`, `30d`, `90d` (default: `7d`)
+- `dias` (query, int, opcional) - Días para recomendados (default: 30, máximo: 365)
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "timestamp": "2026-01-26T10:00:00Z",
+  "sesPublicToken": "550e8400-e29b-41d4-a716-446655440000",
+  "trending": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
+      "ultimoPedido": "2026-01-26T09:55:00Z"
+    }
+  ],
+  "ranking": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "precio": 15.99,
+      "totalPedidos": 45,
+      "totalCantidad": 67,
+      "promedioRating": 0.85,
+      "totalRatings": 40
+    }
+  ],
+  "recomendados": [
+    {
+      "itemMenuId": 2,
+      "nombre": "Pasta Carbonara",
+      "categoria": "Pastas",
+      "precio": 12.50,
+      "promedioRating": 0.92,
+      "totalRatings": 28,
+      "ratingsPositivos": 25,
+      "ratingsNeutros": 2,
+      "ratingsNegativos": 1
+    }
+  ]
+}
+```
+
+**Nota:** El feed público filtra automáticamente pedidos con confianza < 0.3 (configurable en `AntiAbuse:MinConfianzaFeedPublico`).
+
+**Errores:**
+- `400 Bad Request` - Parámetros inválidos
+- `404 Not Found` - Sesión no encontrada con el token proporcionado
+- `409 Conflict` - Sesión expirada
+
+**Ejemplo cURL:**
+```bash
+curl "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/feed?min=30&periodo=7d&dias=30"
+```
+
+---
+
+### 2. Trending - Lo que se está pidiendo ahora
+
+Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
+
+**Endpoint:** `GET /api/sesiones/{sesPublicToken}/trending`
+
+**Parámetros:**
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión
+- `min` (query, int, opcional) - Minutos hacia atrás (default: 30, máximo: 1440)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "restauranteId": 1,
+  "minutos": 30,
+  "timestamp": "2026-01-25T20:15:00Z",
+  "items": [
+    {
+      "itemMenuId": 1,
+      "nombre": "Pizza Margherita",
+      "categoria": "Pizzas",
+      "pedidosUltimosMinutos": 8,
+      "mesasUltimosMinutos": 5,
+      "ultimoPedido": "2026-01-25T20:14:30Z"
+    }
+  ]
+}
+```
+
+**Errores:**
+- `400 Bad Request` - Parámetros inválidos
+- `404 Not Found` - Sesión no encontrada
+- `409 Conflict` - Sesión expirada
+
+**Ejemplo cURL:**
+```bash
+curl "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/trending?min=30"
+```
+
+---
+
+### 3. Ranking de Platos Más Pedidos
 
 Obtiene el ranking de platos más pedidos en un período específico.
 
-**Endpoint:** `GET /api/restaurantes/{id}/ranking`
+**Endpoint:** `GET /api/sesiones/{sesPublicToken}/ranking`
 
 **Parámetros:**
-- `id` (path, int, requerido) - ID del restaurante
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión
 - `periodo` (query, string, opcional) - Período: `1d`, `7d`, `30d`, `90d` (default: `7d`)
 - `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
@@ -257,108 +385,31 @@ Obtiene el ranking de platos más pedidos en un período específico.
       "totalCantidad": 67,
       "promedioRating": 0.85,
       "totalRatings": 40
-    },
-    {
-      "itemMenuId": 2,
-      "nombre": "Pasta Carbonara",
-      "categoria": "Pastas",
-      "precio": 12.50,
-      "totalPedidos": 32,
-      "totalCantidad": 35,
-      "promedioRating": 0.92,
-      "totalRatings": 28
     }
   ]
 }
 ```
-
-**Campos de Respuesta:**
-- `totalPedidos` - Número de veces que se pidió este item
-- `totalCantidad` - Cantidad total de unidades pedidas
-- `promedioRating` - Promedio de ratings (puede ser null si no hay ratings)
-- `totalRatings` - Número de ratings recibidos
 
 **Errores:**
 - `400 Bad Request` - Período inválido
+- `404 Not Found` - Sesión no encontrada
+- `409 Conflict` - Sesión expirada
 
 **Ejemplo cURL:**
 ```bash
-curl "http://localhost:5000/api/restaurantes/1/ranking?periodo=7d"
+curl "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/ranking?periodo=7d"
 ```
-
-**Ordenamiento:**
-- Primero por `totalPedidos` (descendente)
-- Luego por `totalCantidad` (descendente)
 
 ---
 
-### 2. Trending - Lo que se está pidiendo ahora
-
-Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
-
-**Endpoint:** `GET /api/restaurantes/{id}/trending`
-
-**Parámetros:**
-- `id` (path, int, requerido) - ID del restaurante
-- `min` (query, int, opcional) - Minutos hacia atrás (default: 30, máximo: 1440)
-- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
-
-**Respuesta Exitosa (200 OK):**
-```json
-{
-  "restauranteId": 1,
-  "minutos": 30,
-  "timestamp": "2026-01-25T20:15:00Z",
-  "items": [
-    {
-      "itemMenuId": 1,
-      "nombre": "Pizza Margherita",
-      "categoria": "Pizzas",
-      "pedidosUltimosMinutos": 8,
-      "mesasUltimosMinutos": 5,
-      "ultimoPedido": "2026-01-25T20:14:30Z"
-    },
-    {
-      "itemMenuId": 3,
-      "nombre": "Ensalada César",
-      "categoria": "Ensaladas",
-      "pedidosUltimosMinutos": 5,
-      "mesasUltimosMinutos": 3,
-      "ultimoPedido": "2026-01-25T20:12:15Z"
-    }
-  ]
-}
-```
-
-**Campos de Respuesta:**
-- `pedidosUltimosMinutos` - Número de pedidos en los últimos X minutos
-- `mesasUltimosMinutos` - Número de mesas/sesiones distintas que pidieron este item
-- `ultimoPedido` - Fecha/hora del último pedido
-
-**Errores:**
-- `400 Bad Request` - El parámetro `min` debe estar entre 1 y 1440
-
-**Ejemplo cURL:**
-```bash
-curl "http://localhost:5000/api/restaurantes/1/trending?min=30"
-```
-
-**Ordenamiento:**
-- Primero por `pedidosUltimosMinutos` (descendente)
-- Luego por `ultimoPedido` (descendente)
-
-**Nota:** El campo `mesasUltimosMinutos` indica cuántas mesas/sesiones distintas pidieron este item, útil para entender la diversidad de demanda.
-
----
-
-### 3. Platos Más Recomendados
+### 4. Plato Más Recomendados
 
 Obtiene el ranking de platos más recomendados basado en el promedio de ratings.
 
-**Endpoint:** `GET /api/restaurantes/{id}/recomendados`
+**Endpoint:** `GET /api/sesiones/{sesPublicToken}/recomendados`
 
 **Parámetros:**
-- `id` (path, int, requerido) - ID del restaurante
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión
 - `dias` (query, int, opcional) - Días hacia atrás (default: 30, máximo: 365)
 - `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
@@ -381,43 +432,63 @@ Obtiene el ranking de platos más recomendados basado en el promedio de ratings.
       "ratingsPositivos": 25,
       "ratingsNeutros": 2,
       "ratingsNegativos": 1
-    },
-    {
-      "itemMenuId": 1,
-      "nombre": "Pizza Margherita",
-      "categoria": "Pizzas",
-      "precio": 15.99,
-      "promedioRating": 0.85,
-      "totalRatings": 40,
-      "ratingsPositivos": 34,
-      "ratingsNeutros": 4,
-      "ratingsNegativos": 2
     }
   ]
 }
 ```
 
-**Campos de Respuesta:**
-- `promedioRating` - Promedio de ratings (-1 a 1)
-- `totalRatings` - Total de ratings recibidos
-- `ratingsPositivos` - Cantidad de 👍 (puntaje = 1)
-- `ratingsNeutros` - Cantidad de 😐 (puntaje = 0)
-- `ratingsNegativos` - Cantidad de 👎 (puntaje = -1)
-
-**Filtros:**
-- Solo incluye items con mínimo 5 ratings (configurable)
-
 **Errores:**
-- `400 Bad Request` - El parámetro `dias` debe estar entre 1 y 365
+- `400 Bad Request` - Parámetros inválidos
+- `404 Not Found` - Sesión no encontrada
+- `409 Conflict` - Sesión expirada
 
 **Ejemplo cURL:**
 ```bash
-curl "http://localhost:5000/api/restaurantes/1/recomendados?dias=30"
+curl "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/recomendados?dias=30"
 ```
 
-**Ordenamiento:**
-- Primero por `promedioRating` (descendente)
-- Luego por `totalRatings` (descendente)
+---
+
+## 📊 Estadísticas Restaurante (Admin)
+
+Estos endpoints están diseñados para uso administrativo y requieren conocer el `restauranteId`. Para uso público desde una sesión, use los endpoints de [Estadísticas Públicas desde Sesión](#estadísticas-públicas-desde-sesión).
+
+### 1. Ranking de Platos Más Pedidos
+
+**Endpoint:** `GET /api/restaurantes/{id}/ranking`
+
+**Parámetros:**
+- `id` (path, int, requerido) - ID del restaurante
+- `periodo` (query, string, opcional) - Período: `1d`, `7d`, `30d`, `90d` (default: `7d`)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
+
+**Respuesta:** Ver formato en [Ranking desde Sesión](#3-ranking-de-platos-más-pedidos)
+
+---
+
+### 2. Trending - Lo que se está pidiendo ahora
+
+**Endpoint:** `GET /api/restaurantes/{id}/trending`
+
+**Parámetros:**
+- `id` (path, int, requerido) - ID del restaurante
+- `min` (query, int, opcional) - Minutos hacia atrás (default: 30, máximo: 1440)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
+
+**Respuesta:** Ver formato en [Trending desde Sesión](#2-trending---lo-que-se-está-pidiendo-ahora)
+
+---
+
+### 3. Platos Más Recomendados
+
+**Endpoint:** `GET /api/restaurantes/{id}/recomendados`
+
+**Parámetros:**
+- `id` (path, int, requerido) - ID del restaurante
+- `dias` (query, int, opcional) - Días hacia atrás (default: 30, máximo: 365)
+- `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
+
+**Respuesta:** Ver formato en [Recomendados desde Sesión](#4-plato-más-recomendados)
 
 ---
 
@@ -464,9 +535,18 @@ curl "http://localhost:5000/api/restaurantes/1/recomendados?dias=30"
 ```json
 {
   "numero": 5,
-  "cantidadSillas": 6
+  "cantidadSillas": 6,
+  "restauranteId": 1
 }
 ```
+
+### 4. Actualizar Mesa
+
+**Endpoint:** `PUT /api/mesas/{id}`
+
+### 5. Eliminar Mesa
+
+**Endpoint:** `DELETE /api/mesas/{id}`
 
 ---
 
@@ -530,78 +610,7 @@ curl -X POST "http://localhost:5000/api/notificaciones-cliente" \
 
 ## 📱 Feed Social y Tags
 
-### 1. Feed Completo desde QR
-
-Obtiene el feed completo (trending, ranking, recomendados) para una mesa desde su QR token. Crea o reutiliza una sesión automáticamente.
-
-**Endpoint:** `GET /api/mesas/qr/{qrToken}/feed`
-
-**Parámetros:**
-- `qrToken` (path, string, requerido) - Token QR único de la mesa
-- `min` (query, int, opcional) - Minutos para trending (default: 30, máximo: 1440)
-- `periodo` (query, string, opcional) - Período para ranking: `1d`, `7d`, `30d`, `90d` (default: `7d`)
-- `dias` (query, int, opcional) - Días para recomendados (default: 30, máximo: 365)
-
-**Nota:** El feed público filtra automáticamente pedidos con confianza < 0.3 (configurable).
-
-**Respuesta Exitosa (200 OK):**
-```json
-{
-  "timestamp": "2026-01-26T10:00:00Z",
-  "sesionId": 123,
-  "trending": [
-    {
-      "itemMenuId": 1,
-      "nombre": "Pizza Margherita",
-      "categoria": "Pizzas",
-      "pedidosUltimosMinutos": 8,
-      "mesasUltimosMinutos": 5,
-      "ultimoPedido": "2026-01-26T09:55:00Z"
-    }
-  ],
-  "ranking": [
-    {
-      "itemMenuId": 1,
-      "nombre": "Pizza Margherita",
-      "categoria": "Pizzas",
-      "precio": 15.99,
-      "totalPedidos": 45,
-      "totalCantidad": 67,
-      "promedioRating": 0.85,
-      "totalRatings": 40
-    }
-  ],
-  "recomendados": [
-    {
-      "itemMenuId": 2,
-      "nombre": "Pasta Carbonara",
-      "categoria": "Pastas",
-      "precio": 12.50,
-      "promedioRating": 0.92,
-      "totalRatings": 28,
-      "ratingsPositivos": 25,
-      "ratingsNeutros": 2,
-      "ratingsNegativos": 1
-    }
-  ]
-}
-```
-
-**Nota:** El feed siempre filtra pedidos con confianza < 0.3 para mostrar solo contenido confiable.
-
-**Errores:**
-- `400 Bad Request` - Parámetros inválidos
-- `404 Not Found` - QR token no encontrado
-- `409 Conflict` - Mesa no activa
-
-**Ejemplo cURL:**
-```bash
-curl "http://localhost:5000/api/mesas/qr/MESA-001/feed?min=30&periodo=7d&dias=30"
-```
-
----
-
-### 2. Estadísticas Sociales de un Item
+### 1. Estadísticas Sociales de un Item
 
 Obtiene estadísticas sociales detalladas de un item de menú específico.
 
@@ -644,7 +653,7 @@ curl "http://localhost:5000/api/items-menu/1/social?min=30&dias=30&periodo=7d"
 
 ---
 
-### 3. Tags Rápidos
+### 2. Tags Rápidos
 
 #### Obtener Tags Activos
 
@@ -673,12 +682,12 @@ curl "http://localhost:5000/api/items-menu/1/social?min=30&dias=30&periodo=7d"
 
 #### Crear o Actualizar Voto de Tag
 
-Crea o actualiza un voto de tag para un item en una sesión (upsert). Evita spam con índice único.
+Crea o actualiza un voto de tag para un item en una sesión usando token público (upsert). Evita spam con índice único.
 
-**Endpoint:** `POST /api/sesiones/{sesionId}/items/{itemMenuId}/tags`
+**Endpoint:** `POST /api/sesiones/{sesPublicToken}/items/{itemMenuId}/tags`
 
 **Parámetros:**
-- `sesionId` (path, int, requerido) - ID de la sesión
+- `sesPublicToken` (path, string, requerido) - Token público de la sesión
 - `itemMenuId` (path, int, requerido) - ID del item de menú
 
 **Body:**
@@ -707,16 +716,17 @@ Crea o actualiza un voto de tag para un item en una sesión (upsert). Evita spam
 **Errores:**
 - `400 Bad Request` - Sesión cerrada, item no encontrado, tag no encontrado, valor inválido, o item no pertenece al restaurante
 - `404 Not Found` - Sesión o item no encontrado
+- `409 Conflict` - Sesión expirada
 
 **Ejemplo cURL:**
 ```bash
-curl -X POST "http://localhost:5000/api/sesiones/1/items/1/tags" \
+curl -X POST "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/items/1/tags" \
   -H "Content-Type: application/json" \
   -d '{"tagId": 1, "valor": 1}'
 ```
 
 **Validaciones:**
-- La sesión debe estar activa
+- La sesión debe estar activa y no expirada
 - El item debe pertenecer al restaurante de la sesión
 - El tag debe estar activo
 - El valor debe ser +1 o -1
@@ -745,22 +755,29 @@ Se devuelve cuando se excede el límite de rate limiting:
 ```
 
 #### 409 Conflict (Sesión Expirada)
-Se devuelve cuando se intenta crear un pedido/rating con una sesión que no tiene actividad reciente:
+Se devuelve cuando se intenta crear un pedido/rating con una sesión que no tiene actividad reciente o está expirada:
 ```json
 {
-  "error": "Sesión no válida o expirada. Por favor, escanea el QR nuevamente."
+  "error": "Sesión expirada. Por favor, re-escanea el QR."
 }
 ```
 
+---
+
 ## 🔒 Seguridad y Anti-Abuso
 
+### Tokens Públicos (sesPublicToken)
+
+**⚠️ Importante:** Todos los endpoints públicos ahora usan `sesPublicToken` (GUID) en lugar de `sesionId` (int) para evitar enumeración de sesiones.
+
 - ✅ **Sin autenticación** - Todo es anónimo
-- ✅ **No se exponen IDs internos** - Se usan QR tokens en lugar de IDs de mesa
+- ✅ **No se exponen IDs internos** - Se usan QR tokens y tokens públicos de sesión
 - ✅ **Validaciones** - Todas las entradas son validadas
 - ✅ **UTC** - Todas las fechas están en UTC
 - ✅ **Rate Limiting** - Límites por participante para prevenir spam
 - ✅ **Score de Confianza** - Cada pedido tiene un score de confianza (0.0-1.0)
 - ✅ **Protección QR** - Validación de actividad reciente para crear pedidos/ratings
+- ✅ **Timeout de Sesión** - Las sesiones expiran automáticamente después de 90 minutos sin actividad (configurable)
 
 ### Header X-Client-Id
 
@@ -779,6 +796,8 @@ X-Client-Id: 550e8400-e29b-41d4-a716-446655440000
 ```
 
 **Ver documentación completa:** [Confianza y Anti-Abuso](./CONFIANZA_ANTI_ABUSO.md)
+
+---
 
 ## 📚 Swagger
 
