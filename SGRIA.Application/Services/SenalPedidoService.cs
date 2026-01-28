@@ -44,57 +44,43 @@ public class SenalPedidoService
         SenalPedidoCreateDto dto,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new ArgumentException("X-Client-Id es requerido.");
+
         // Validar sesión activa y no expirada usando token público
         var sesion = await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesPublicToken, ct);
 
-        // Validar actividad reciente del participante (protección QR)
-        SesionParticipante? participante = null;
-        if (!string.IsNullOrWhiteSpace(clientId))
-        {
-            var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
-            participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
-                sesion.Id, 
-                device.DeviceHash, 
-                ct);
-            
-            if (participante != null)
-            {
-                // Validar que la última actividad sea reciente (máximo 10 minutos)
-                var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
-                if (minutosDesdeActividad > 10)
-                {
-                    throw new InvalidOperationException(
-                        "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
-                }
+        var device = await _deviceService.GetOrCreateDeviceAsync(clientId!, ct);
+        var participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
+            sesion.Id, 
+            device.DeviceHash, 
+            ct);
 
-                // Validar rate limiting
-                await _rateLimitService.ValidarLimitePedidosAsync(participante.Id, ct);
-                
-                // Actualizar última actividad
-                participante.UltimaActividad = DateTime.UtcNow;
-                await _participanteRepo.UpdateAsync(participante, ct);
-            }
+        if (participante == null)
+            throw new InvalidOperationException("Debes escanear el QR de la mesa para unirte a la sesión antes de confirmar pedidos.");
+
+        // Validar que la última actividad sea reciente (máximo 10 minutos)
+        var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
+        if (minutosDesdeActividad > 10)
+        {
+            throw new InvalidOperationException(
+                "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
         }
+
+        await _rateLimitService.ValidarLimitePedidosAsync(participante.Id, ct);
+        participante.UltimaActividad = DateTime.UtcNow;
+        await _participanteRepo.UpdateAsync(participante, ct);
 
         // Validar item de menú
         var item = await _itemRepo.GetByIdAsync(dto.ItemMenuId, ct);
         if (item == null)
-        {
-            throw new ArgumentException($"Item de menú no encontrado: {dto.ItemMenuId}");
-        }
+            throw new ArgumentException("Item de menú no encontrado.");
 
         if (!item.Activo)
-        {
-            throw new InvalidOperationException("El item de menú no está activo");
-        }
+            throw new InvalidOperationException("El item de menú no está activo.");
 
-        // Validar que el item pertenece al mismo restaurante que la mesa/sesión
         if (item.RestauranteId != sesion.Mesa.RestauranteId)
-        {
-            throw new InvalidOperationException(
-                $"El item de menú no pertenece al restaurante de esta sesión. " +
-                $"Item restaurante: {item.RestauranteId}, Sesión restaurante: {sesion.Mesa.RestauranteId}");
-        }
+            throw new InvalidOperationException("El item de menú no pertenece al restaurante de esta sesión.");
 
         // Calcular confianza
         // Contar pedidos de la sesión (cargar si no están cargados)

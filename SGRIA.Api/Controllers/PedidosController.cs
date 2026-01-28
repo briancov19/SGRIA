@@ -28,17 +28,13 @@ public class PedidosController : ControllerBase
         [FromBody] SenalRatingCreateDto dto,
         CancellationToken ct)
     {
+        var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(clientId))
+            return BadRequest(new { error = "X-Client-Id es requerido. Obtén uno al escanear el QR (POST /api/mesas/qr/{qrToken}/sesion)." });
+
         try
         {
-            var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
             var rating = await _ratingService.RegistrarRatingAsync(pedidoId, clientId, dto, ct);
-            
-            // Devolver X-Client-Id si no estaba presente
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                Response.Headers["X-Client-Id"] = Guid.NewGuid().ToString();
-            }
-            
             return Ok(rating);
         }
         catch (ArgumentException ex)
@@ -53,7 +49,7 @@ public class PedidosController : ControllerBase
                 return StatusCode(429, new { error = ex.Message });
             }
             // 403/409 para sesión expirada
-            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida"))
+            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida") || ex.Message.Contains("unirte"))
             {
                 return StatusCode(409, new { error = ex.Message });
             }

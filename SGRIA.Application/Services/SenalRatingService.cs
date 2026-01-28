@@ -35,27 +35,20 @@ public class SenalRatingService
         SenalRatingCreateDto dto,
         CancellationToken ct)
     {
-        // Validar puntaje
-        if (dto.Puntaje < -1 || dto.Puntaje > 1)
-        {
-            throw new ArgumentException("El puntaje debe ser -1, 0 o 1");
-        }
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new ArgumentException("X-Client-Id es requerido.");
 
-        // Validar pedido (debe incluir sesión y mesa)
+        if (dto.Puntaje < -1 || dto.Puntaje > 1)
+            throw new ArgumentException("El puntaje debe ser -1, 0 o 1");
+
         var pedido = await _pedidoRepo.GetByIdAsync(pedidoId, ct);
         if (pedido == null)
-        {
-            throw new ArgumentException($"Pedido no encontrado: {pedidoId}");
-        }
+            throw new ArgumentException("Pedido no encontrado.");
 
-        // Obtener sesión desde el pedido (ya está cargado con Include)
         var sesion = pedido.SesionMesa;
         if (sesion == null)
-        {
-            throw new ArgumentException($"Sesión no encontrada para el pedido: {pedidoId}");
-        }
+            throw new ArgumentException("Sesión no encontrada para este pedido.");
 
-        // Validar sesión activa usando el servicio público (valida timeout)
         try
         {
             await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesion.SesPublicToken, ct);
@@ -65,40 +58,26 @@ public class SenalRatingService
             throw new InvalidOperationException("Sesión expirada. Por favor, re-escanea el QR.");
         }
 
-        // Validar actividad reciente del participante (protección QR)
-        SesionParticipante? participante = null;
-        if (!string.IsNullOrWhiteSpace(clientId))
-        {
-            var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
-            participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
-                pedido.SesionMesaId, 
-                device.DeviceHash, 
-                ct);
-            
-            if (participante != null)
-            {
-                // Validar que la última actividad sea reciente (máximo 10 minutos)
-                var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
-                if (minutosDesdeActividad > 10)
-                {
-                    throw new InvalidOperationException(
-                        "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
-                }
+        var device = await _deviceService.GetOrCreateDeviceAsync(clientId!, ct);
+        var participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
+            pedido.SesionMesaId, 
+            device.DeviceHash, 
+            ct);
 
-                // Validar rate limiting (solo para updates)
-                var ratingExistenteParaValidar = await _ratingRepo.GetByPedidoIdAsync(pedidoId, ct);
-                if (ratingExistenteParaValidar != null)
-                {
-                    await _rateLimitService.ValidarLimiteRatingsAsync(participante.Id, ct);
-                }
-                
-                // Actualizar última actividad
-                participante.UltimaActividad = DateTime.UtcNow;
-                await _participanteRepo.UpdateAsync(participante, ct);
-            }
+        if (participante == null)
+            throw new InvalidOperationException("Debes escanear el QR de la mesa para unirte a la sesión antes de calificar.");
+
+        var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
+        if (minutosDesdeActividad > 10)
+        {
+            throw new InvalidOperationException(
+                "Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
         }
-        
-        // Actualizar última actividad de la sesión (touch)
+
+        await _rateLimitService.ValidarLimiteRatingsAsync(participante.Id, ct);
+        participante.UltimaActividad = DateTime.UtcNow;
+        await _participanteRepo.UpdateAsync(participante, ct);
+
         await _sesionPublicaService.TouchSessionAsync(sesion.Id, ct);
 
         // Verificar si ya existe un rating para este pedido

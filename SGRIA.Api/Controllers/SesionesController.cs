@@ -45,17 +45,13 @@ public class SesionesController : ControllerBase
         [FromBody] SenalPedidoCreateDto dto,
         CancellationToken ct)
     {
+        var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(clientId))
+            return BadRequest(new { error = "X-Client-Id es requerido. Obtén uno al escanear el QR (POST /api/mesas/qr/{qrToken}/sesion)." });
+
         try
         {
-            var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
             var pedido = await _pedidoService.ConfirmarPedidoPorTokenAsync(sesPublicToken, clientId, dto, ct);
-            
-            // Devolver X-Client-Id si no estaba presente
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                Response.Headers["X-Client-Id"] = Guid.NewGuid().ToString();
-            }
-            
             return CreatedAtAction(
                 nameof(GetPedido),
                 new { pedidoId = pedido.Id },
@@ -72,8 +68,8 @@ public class SesionesController : ControllerBase
             {
                 return StatusCode(429, new { error = ex.Message });
             }
-            // 404/409 para sesión expirada o no encontrada
-            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida") || ex.Message.Contains("no encontrada"))
+            // 404/409 para sesión expirada, no encontrada o "debes unirte"
+            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida") || ex.Message.Contains("no encontrada") || ex.Message.Contains("unirte"))
             {
                 return StatusCode(409, new { error = ex.Message });
             }
@@ -101,15 +97,20 @@ public class SesionesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> CrearOActualizarTagVotoPorToken(
         [FromRoute] string sesPublicToken,
         [FromRoute] int itemMenuId,
         [FromBody] TagVotoCreateDto dto,
         CancellationToken ct)
     {
+        var clientId = Request.Headers["X-Client-Id"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(clientId))
+            return BadRequest(new { error = "X-Client-Id es requerido. Obtén uno al escanear el QR (POST /api/mesas/qr/{qrToken}/sesion)." });
+
         try
         {
-            var voto = await _tagVotoService.CrearOActualizarVotoPorTokenAsync(sesPublicToken, itemMenuId, dto, ct);
+            var voto = await _tagVotoService.CrearOActualizarVotoPorTokenAsync(sesPublicToken, itemMenuId, clientId, dto, ct);
             return Ok(voto);
         }
         catch (ArgumentException ex)
@@ -118,7 +119,9 @@ public class SesionesController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            if (ex.Message.Contains("expirada"))
+            if (ex.Message.Contains("Límite") || ex.Message.Contains("excedido"))
+                return StatusCode(429, new { error = ex.Message });
+            if (ex.Message.Contains("expirada") || ex.Message.Contains("no válida") || ex.Message.Contains("unirte"))
                 return StatusCode(409, new { error = ex.Message });
             return BadRequest(new { error = ex.Message });
         }
@@ -166,7 +169,7 @@ public class SesionesController : ControllerBase
     /// </summary>
     /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/trending")]
-    [ProducesResponseType(typeof(TrendingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TrendingPublicDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -186,7 +189,8 @@ public class SesionesController : ControllerBase
             var restauranteId = sesion.Mesa.RestauranteId;
 
             var trending = await _estadisticasService.GetTrendingAsync(restauranteId, min, minConfianza, ct);
-            return Ok(trending);
+            var publicDto = new TrendingPublicDto(trending.Minutos, trending.Timestamp, trending.Items);
+            return Ok(publicDto);
         }
         catch (ArgumentException ex)
         {
@@ -207,7 +211,7 @@ public class SesionesController : ControllerBase
     /// </summary>
     /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/ranking")]
-    [ProducesResponseType(typeof(RankingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RankingPublicDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -245,7 +249,7 @@ public class SesionesController : ControllerBase
     /// </summary>
     /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/recomendados")]
-    [ProducesResponseType(typeof(RecomendadosResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RecomendadosPublicDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -265,7 +269,8 @@ public class SesionesController : ControllerBase
             var restauranteId = sesion.Mesa.RestauranteId;
 
             var recomendados = await _estadisticasService.GetRecomendadosAsync(restauranteId, dias, minConfianza, ct);
-            return Ok(recomendados);
+            var publicDto = new RecomendadosPublicDto(recomendados.Dias, recomendados.FechaDesde, recomendados.FechaHasta, recomendados.MinimoRatings, recomendados.Items);
+            return Ok(publicDto);
         }
         catch (ArgumentException ex)
         {

@@ -18,3 +18,11 @@ public record RankingResponseDto(
     DateTime FechaHasta,
     List<ItemRankingDto> Items
 );
+
+/// <summary>Versión sin RestauranteId para endpoints públicos por sesión.</summary>
+public record RankingPublicDto(
+    string Periodo,
+    DateTime FechaDesde,
+    DateTime FechaHasta,
+    List<ItemRankingDto> Items
+);

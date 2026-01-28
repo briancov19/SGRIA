@@ -44,7 +44,7 @@ public class SesionPublicaService
         var mesa = await _mesaRepo.GetByQrTokenAsync(qrToken, ct);
         if (mesa == null)
         {
-            throw new ArgumentException($"Mesa no encontrada con QR token: {qrToken}");
+            throw new ArgumentException("Mesa no encontrada con el QR token proporcionado.");
         }
 
         if (!mesa.Activa)
@@ -154,7 +154,7 @@ public class SesionPublicaService
         var sesion = await _sesionRepo.GetByPublicTokenAsync(sesPublicToken, ct);
         if (sesion == null)
         {
-            throw new ArgumentException($"Sesión no encontrada con token: {sesPublicToken}");
+            throw new ArgumentException("Sesión no encontrada con el token proporcionado.");
         }
 
         // Validar que la sesión esté activa
@@ -186,7 +186,7 @@ public class SesionPublicaService
         var sesion = await _sesionRepo.GetByIdAsync(sesionId, ct);
         if (sesion == null)
         {
-            throw new ArgumentException($"Sesión no encontrada: {sesionId}");
+            throw new ArgumentException("Sesión no encontrada.");
         }
 
         sesion.FechaHoraUltActividad = DateTime.UtcNow;

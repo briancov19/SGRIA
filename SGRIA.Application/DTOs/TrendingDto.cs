@@ -15,3 +15,10 @@ public record TrendingResponseDto(
     DateTime Timestamp,
     List<ItemTrendingDto> Items
 );
+
+/// <summary>Versión sin RestauranteId para endpoints públicos por sesión.</summary>
+public record TrendingPublicDto(
+    int Minutos,
+    DateTime Timestamp,
+    List<ItemTrendingDto> Items
+);

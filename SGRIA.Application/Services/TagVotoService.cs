@@ -11,56 +11,81 @@ public class TagVotoService
     private readonly IItemMenuRepository _itemRepo;
     private readonly ITagRapidoRepository _tagRepo;
     private readonly SesionPublicaService _sesionPublicaService;
+    private readonly AnonDeviceService _deviceService;
+    private readonly ISesionParticipanteRepository _participanteRepo;
+    private readonly RateLimitService _rateLimitService;
 
     public TagVotoService(
         ITagVotoRepository votoRepo,
         ISesionMesaRepository sesionRepo,
         IItemMenuRepository itemRepo,
         ITagRapidoRepository tagRepo,
-        SesionPublicaService sesionPublicaService)
+        SesionPublicaService sesionPublicaService,
+        AnonDeviceService deviceService,
+        ISesionParticipanteRepository participanteRepo,
+        RateLimitService rateLimitService)
     {
         _votoRepo = votoRepo;
         _sesionRepo = sesionRepo;
         _itemRepo = itemRepo;
         _tagRepo = tagRepo;
         _sesionPublicaService = sesionPublicaService;
+        _deviceService = deviceService;
+        _participanteRepo = participanteRepo;
+        _rateLimitService = rateLimitService;
     }
 
     /// <summary>
     /// Crea o actualiza un voto de tag usando el token público de la sesión.
+    /// Requiere X-Client-Id y participante con actividad reciente (protección QR + rate limiting).
     /// </summary>
     public async Task<TagVotoDto> CrearOActualizarVotoPorTokenAsync(
         string sesPublicToken,
         int itemMenuId,
+        string clientId,
         TagVotoCreateDto dto,
         CancellationToken ct)
     {
-        // Validar sesión activa y no expirada usando token público
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new ArgumentException("X-Client-Id es requerido.");
+
         var sesion = await _sesionPublicaService.GetActiveSessionByPublicTokenAsync(sesPublicToken, ct);
 
-        // Validar item de menú
+        var device = await _deviceService.GetOrCreateDeviceAsync(clientId, ct);
+        var participante = await _participanteRepo.GetActivoBySesionAndDeviceHashAsync(
+            sesion.Id,
+            device.DeviceHash,
+            ct);
+
+        if (participante == null)
+            throw new InvalidOperationException("Debes escanear el QR de la mesa para unirte a la sesión antes de votar tags.");
+
+        var minutosDesdeActividad = (DateTime.UtcNow - participante.UltimaActividad).TotalMinutes;
+        if (minutosDesdeActividad > 10)
+            throw new InvalidOperationException("Sesión no válida o expirada. Por favor, escanea el QR nuevamente.");
+
+        await _rateLimitService.ValidarLimiteTagVotosAsync(participante.Id, ct);
+
         var item = await _itemRepo.GetByIdAsync(itemMenuId, ct);
         if (item == null)
-            throw new ArgumentException($"Item de menú no encontrado: {itemMenuId}");
+            throw new ArgumentException("Item de menú no encontrado.");
 
-        // Validar que item pertenece al restaurante de la sesión
         if (item.RestauranteId != sesion.Mesa.RestauranteId)
-            throw new InvalidOperationException(
-                $"El item de menú no pertenece al restaurante de esta sesión");
+            throw new InvalidOperationException("El item de menú no pertenece al restaurante de esta sesión.");
 
-        // Validar tag
         var tag = await _tagRepo.GetByIdAsync(dto.TagId, ct);
         if (tag == null)
-            throw new ArgumentException($"Tag no encontrado: {dto.TagId}");
+            throw new ArgumentException("Tag no encontrado.");
 
         if (!tag.Activo)
-            throw new InvalidOperationException("El tag no está activo");
+            throw new InvalidOperationException("El tag no está activo.");
 
-        // Validar valor
         if (dto.Valor != 1 && dto.Valor != -1)
             throw new ArgumentException("El valor debe ser +1 o -1");
 
-        // Crear o actualizar voto (upsert)
+        participante.UltimaActividad = DateTime.UtcNow;
+        await _participanteRepo.UpdateAsync(participante, ct);
+
         var voto = new VotoTagItemMenu
         {
             SesionMesaId = sesion.Id,
@@ -70,8 +95,6 @@ public class TagVotoService
         };
 
         var votoGuardado = await _votoRepo.CreateOrUpdateAsync(voto, ct);
-        
-        // Actualizar última actividad de la sesión (touch)
         await _sesionPublicaService.TouchSessionAsync(sesion.Id, ct);
 
         return new TagVotoDto(

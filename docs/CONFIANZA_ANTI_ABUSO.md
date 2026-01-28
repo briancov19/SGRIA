@@ -111,9 +111,8 @@ public class SesionParticipante
 
 ### Si `X-Client-Id` no está presente
 
-- El backend genera un nuevo GUID
-- Lo devuelve en el header `X-Client-Id` de la respuesta
-- El frontend debe guardarlo en `localStorage` para futuras requests
+- **En `POST /api/mesas/qr/{qrToken}/sesion`:** El backend genera un nuevo GUID y lo devuelve en el header `X-Client-Id`. El frontend debe guardarlo (p. ej. `localStorage`) para usarlo en pedidos, ratings y tags.
+- **En `POST /api/sesiones/{token}/pedidos`, `POST /api/pedidos/{id}/rating`, `POST /api/sesiones/{token}/items/{id}/tags`:** `X-Client-Id` es **obligatorio**. Si falta, se responde `400 Bad Request`. Es necesario para rate limiting, actividad reciente y participación en la sesión.
 
 ---
 
@@ -134,11 +133,11 @@ La validación se realiza **antes** de crear/actualizar el recurso:
 // En SenalPedidoService
 await _rateLimitService.ValidarLimitePedidosAsync(participante.Id, ct);
 
-// En SenalRatingService (solo para updates)
-if (ratingExistente != null)
-{
-    await _rateLimitService.ValidarLimiteRatingsAsync(participante.Id, ct);
-}
+// En SenalRatingService (crear y actualizar)
+await _rateLimitService.ValidarLimiteRatingsAsync(participante.Id, ct);
+
+// En TagVotoService
+await _rateLimitService.ValidarLimiteTagVotosAsync(participante.Id, ct);
 ```
 
 ### Mensaje de Error

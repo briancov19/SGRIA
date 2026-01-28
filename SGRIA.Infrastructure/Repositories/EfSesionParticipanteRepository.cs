@@ -78,4 +78,17 @@ public class EfSesionParticipanteRepository : ISesionParticipanteRepository
                      && r.FechaHora >= ventanaInicio)
             .CountAsync(ct);
     }
+
+    public async Task<int> CountTagVotosByParticipanteEnVentanaAsync(int sesionParticipanteId, int minutos, CancellationToken ct)
+    {
+        var participante = await _context.SesionParticipantes
+            .FirstOrDefaultAsync(p => p.Id == sesionParticipanteId, ct);
+
+        if (participante == null) return 0;
+
+        var ventanaInicio = DateTime.UtcNow.AddMinutes(-minutos);
+        return await _context.VotosTagItemMenu
+            .Where(v => v.SesionMesaId == participante.SesionMesaId && v.FechaHora >= ventanaInicio)
+            .CountAsync(ct);
+    }
 }

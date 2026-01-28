@@ -20,3 +20,12 @@ public record RecomendadosResponseDto(
     int MinimoRatings,
     List<ItemRecomendadoDto> Items
 );
+
+/// <summary>Versión sin RestauranteId para endpoints públicos por sesión.</summary>
+public record RecomendadosPublicDto(
+    int Dias,
+    DateTime FechaDesde,
+    DateTime FechaHasta,
+    int MinimoRatings,
+    List<ItemRecomendadoDto> Items
+);

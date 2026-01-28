@@ -22,4 +22,9 @@ public interface ISesionParticipanteRepository
     /// Cuenta ratings actualizados por un participante en una sesión en los últimos X minutos
     /// </summary>
     Task<int> CountRatingsByParticipanteEnVentanaAsync(int sesionParticipanteId, int minutos, CancellationToken ct);
+
+    /// <summary>
+    /// Cuenta votos de tag creados/actualizados en la sesión del participante en los últimos X minutos
+    /// </summary>
+    Task<int> CountTagVotosByParticipanteEnVentanaAsync(int sesionParticipanteId, int minutos, CancellationToken ct);
 }

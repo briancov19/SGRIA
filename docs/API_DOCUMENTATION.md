@@ -123,12 +123,11 @@ Confirma que un cliente pidió un item del menú en una sesión específica usan
 ```
 
 **Headers:**
-- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima y rate limiting
+- `X-Client-Id` (**requerido**) - GUID del dispositivo. Obtenerlo al escanear el QR (`POST /api/mesas/qr/{qrToken}/sesion`). Necesario para rate limiting y actividad reciente.
 
 **Errores:**
-- `400 Bad Request` - Item no encontrado, inactivo, o no pertenece al restaurante de la sesión
-- `404 Not Found` - Sesión no encontrada con el token proporcionado
-- `409 Conflict` - Sesión expirada o cerrada
+- `400 Bad Request` - Falta `X-Client-Id`, item no encontrado, inactivo o no pertenece al restaurante de la sesión
+- `409 Conflict` - Sesión expirada, cerrada o "debes escanear el QR para unirte a la sesión"
 - `429 Too Many Requests` - Límite de pedidos excedido (máximo 10 pedidos cada 10 minutos por participante)
 
 **Ejemplo cURL:**
@@ -144,6 +143,7 @@ curl -X POST "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-4466554
 ```
 
 **Validaciones:**
+- `X-Client-Id` es obligatorio. Debes haber escaneado el QR y unirte a la sesión antes de confirmar pedidos.
 - La sesión debe estar activa (sin `fechaHoraFin`) y no expirada (actividad reciente)
 - El item de menú debe existir, estar activo y pertenecer al restaurante de la sesión
 - La cantidad debe ser mayor a 0
@@ -210,11 +210,11 @@ Registra o actualiza el rating de un pedido. Permite calificar con 👍 (1), �
 ```
 
 **Headers:**
-- `X-Client-Id` (opcional) - GUID del dispositivo para identificación anónima
+- `X-Client-Id` (**requerido**) - GUID del dispositivo. Obtenerlo al escanear el QR. Necesario para rate limiting y actividad reciente.
 
 **Errores:**
-- `400 Bad Request` - Puntaje inválido (debe ser -1, 0 o 1) o pedido no encontrado
-- `409 Conflict` - Sesión expirada (sin actividad reciente)
+- `400 Bad Request` - Falta `X-Client-Id`, puntaje inválido (debe ser -1, 0 o 1) o pedido no encontrado
+- `409 Conflict` - Sesión expirada, sin actividad reciente o "debes escanear el QR para unirte antes de calificar"
 - `429 Too Many Requests` - Límite de ratings excedido (máximo 10 ratings cada 10 minutos por participante)
 
 **Ejemplo cURL:**
@@ -320,10 +320,9 @@ Obtiene los platos que se están pidiendo en tiempo real (últimos X minutos).
 - `min` (query, int, opcional) - Minutos hacia atrás (default: 30, máximo: 1440)
 - `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
-**Respuesta Exitosa (200 OK):**
+**Respuesta Exitosa (200 OK):** *(No incluye `restauranteId`; el restaurante se infiere de la sesión.)*
 ```json
 {
-  "restauranteId": 1,
   "minutos": 30,
   "timestamp": "2026-01-25T20:15:00Z",
   "items": [
@@ -368,10 +367,9 @@ Obtiene el ranking de platos más pedidos en un período específico.
 - `30d` o `30dias` o `mes` - Últimos 30 días
 - `90d` o `90dias` o `trimestre` - Últimos 90 días
 
-**Respuesta Exitosa (200 OK):**
+**Respuesta Exitosa (200 OK):** *(No incluye `restauranteId`; el restaurante se infiere de la sesión.)*
 ```json
 {
-  "restauranteId": 1,
   "periodo": "7d",
   "fechaDesde": "2026-01-18T00:00:00Z",
   "fechaHasta": "2026-01-25T23:59:59Z",
@@ -413,10 +411,9 @@ Obtiene el ranking de platos más recomendados basado en el promedio de ratings.
 - `dias` (query, int, opcional) - Días hacia atrás (default: 30, máximo: 365)
 - `minConfianza` (query, decimal, opcional) - Confianza mínima para filtrar pedidos (0.0-1.0)
 
-**Respuesta Exitosa (200 OK):**
+**Respuesta Exitosa (200 OK):** *(No incluye `restauranteId`; el restaurante se infiere de la sesión.)*
 ```json
 {
-  "restauranteId": 1,
   "dias": 30,
   "fechaDesde": "2025-12-26T00:00:00Z",
   "fechaHasta": "2026-01-25T23:59:59Z",
@@ -713,23 +710,30 @@ Crea o actualiza un voto de tag para un item en una sesión usando token públic
 }
 ```
 
+**Headers:**
+- `X-Client-Id` (**requerido**) - GUID del dispositivo. Obtenerlo al escanear el QR. Necesario para rate limiting y actividad reciente.
+
 **Errores:**
-- `400 Bad Request` - Sesión cerrada, item no encontrado, tag no encontrado, valor inválido, o item no pertenece al restaurante
+- `400 Bad Request` - Falta `X-Client-Id`, item no encontrado, tag no encontrado, valor inválido o item no pertenece al restaurante
 - `404 Not Found` - Sesión o item no encontrado
-- `409 Conflict` - Sesión expirada
+- `409 Conflict` - Sesión expirada o "debes escanear el QR para unirte antes de votar tags"
+- `429 Too Many Requests` - Límite de votos de tag excedido (máximo 10 cada 10 minutos por participante)
 
 **Ejemplo cURL:**
 ```bash
 curl -X POST "http://localhost:5000/api/sesiones/550e8400-e29b-41d4-a716-446655440000/items/1/tags" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{"tagId": 1, "valor": 1}'
 ```
 
 **Validaciones:**
-- La sesión debe estar activa y no expirada
+- `X-Client-Id` es obligatorio. Debes haber escaneado el QR y unirte a la sesión antes de votar tags.
+- La sesión debe estar activa y no expirada; actividad reciente del participante (máx. 10 min)
 - El item debe pertenecer al restaurante de la sesión
 - El tag debe estar activo
 - El valor debe ser +1 o -1
+- Rate limiting por participante (votos de tag)
 - Upsert: si ya existe voto para (sesion+item+tag), lo actualiza
 
 ---
