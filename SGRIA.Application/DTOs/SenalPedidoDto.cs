@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 public record SenalPedidoDto(
@@ -12,8 +14,8 @@ public record SenalPedidoDto(
 );
 
 public record SenalPedidoCreateDto(
-    int ItemMenuId,
-    int Cantidad = 1,
-    string IngresadoPor = "Cliente",
-    decimal? Confianza = null
+    [property: Required][property: Range(1, int.MaxValue)] int ItemMenuId,
+    [property: Range(1, int.MaxValue)] int Cantidad = 1,
+    [property: MaxLength(20)] string IngresadoPor = "Cliente",
+    [property: Range(0, 1)] decimal? Confianza = null
 );

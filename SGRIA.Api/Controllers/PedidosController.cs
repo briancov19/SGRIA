@@ -19,6 +19,10 @@ public class PedidosController : ControllerBase
     /// Registra o actualiza un rating para un pedido (👍=1, 😐=0, 👎=-1)
     /// </summary>
     [HttpPost("{pedidoId}/rating")]
+    [ProducesResponseType(typeof(SenalRatingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> RegistrarRating(
         [FromRoute] int pedidoId,
         [FromBody] SenalRatingCreateDto dto,

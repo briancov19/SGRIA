@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 public record TagVotoDto(
@@ -9,6 +11,6 @@ public record TagVotoDto(
 );
 
 public record TagVotoCreateDto(
-    int TagId,
-    short Valor // +1 o -1
+    [property: Required][property: Range(1, int.MaxValue)] int TagId,
+    [property: Range(-1, 1)] short Valor // +1 o -1
 );

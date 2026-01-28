@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using SGRIA.Application.DTOs;
 using SGRIA.Application.Services;
+using SGRIA.Api.Filters;
 
 namespace SGRIA.Api.Controllers;
 
 [ApiController]
 [Route("api/sesiones")]
+[ValidateSesPublicToken]
 public class SesionesController : ControllerBase
 {
     private readonly SenalPedidoService _pedidoService;
@@ -32,7 +34,12 @@ public class SesionesController : ControllerBase
     /// Confirma un pedido en una sesión usando el token público.
     /// Valida que la sesión esté activa y no expirada.
     /// </summary>
+    /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpPost("{sesPublicToken}/pedidos")]
+    [ProducesResponseType(typeof(SenalPedidoDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> ConfirmarPedidoPorToken(
         [FromRoute] string sesPublicToken,
         [FromBody] SenalPedidoCreateDto dto,
@@ -74,7 +81,10 @@ public class SesionesController : ControllerBase
         }
     }
 
+    /// <summary>Obtiene un pedido por ID.</summary>
     [HttpGet("pedidos/{pedidoId}")]
+    [ProducesResponseType(typeof(SenalPedidoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPedido(int pedidoId, CancellationToken ct)
     {
         var pedido = await _pedidoService.GetByIdAsync(pedidoId, ct);
@@ -85,7 +95,12 @@ public class SesionesController : ControllerBase
     /// Crea o actualiza un voto de tag para un item en una sesión usando token público (upsert).
     /// Valida que la sesión esté activa y que el item pertenezca al restaurante de la sesión.
     /// </summary>
+    /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpPost("{sesPublicToken}/items/{itemMenuId}/tags")]
+    [ProducesResponseType(typeof(TagVotoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CrearOActualizarTagVotoPorToken(
         [FromRoute] string sesPublicToken,
         [FromRoute] int itemMenuId,
@@ -149,7 +164,12 @@ public class SesionesController : ControllerBase
     /// <summary>
     /// Obtiene trending (lo que se está pidiendo ahora) desde un token público de sesión.
     /// </summary>
+    /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/trending")]
+    [ProducesResponseType(typeof(TrendingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetTrending(
         [FromRoute] string sesPublicToken,
         [FromQuery] int min = 30,
@@ -185,7 +205,12 @@ public class SesionesController : ControllerBase
     /// <summary>
     /// Obtiene ranking de platos más pedidos desde un token público de sesión.
     /// </summary>
+    /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/ranking")]
+    [ProducesResponseType(typeof(RankingResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetRanking(
         [FromRoute] string sesPublicToken,
         [FromQuery] string periodo = "7d",
@@ -218,7 +243,12 @@ public class SesionesController : ControllerBase
     /// <summary>
     /// Obtiene platos más recomendados desde un token público de sesión.
     /// </summary>
+    /// <param name="sesPublicToken">Token público (GUID) de la sesión.</param>
     [HttpGet("{sesPublicToken}/recomendados")]
+    [ProducesResponseType(typeof(RecomendadosResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> GetRecomendados(
         [FromRoute] string sesPublicToken,
         [FromQuery] int dias = 30,

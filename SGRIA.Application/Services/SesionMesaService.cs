@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using SGRIA.Application.DTOs;
 using SGRIA.Application.Interfaces;
 using SGRIA.Domain.Entities;
@@ -17,13 +18,13 @@ public class SesionMesaService
         IMesaRepository mesaRepo,
         AnonDeviceService deviceService,
         ISesionParticipanteRepository participanteRepo,
-        int timeoutMinutos = 90)
+        IConfiguration configuration)
     {
         _sesionRepo = sesionRepo;
         _mesaRepo = mesaRepo;
         _deviceService = deviceService;
         _participanteRepo = participanteRepo;
-        _timeoutMinutos = timeoutMinutos;
+        _timeoutMinutos = int.Parse(configuration["Session:TimeoutMinutes"] ?? "90");
     }
 
     public async Task<SesionMesaDto> CrearOReutilizarSesionAsync(

@@ -123,22 +123,30 @@ Ver [Domain Model](./docs/DOMAIN_MODEL.md) para detalles completos.
 ### Ejemplo de Flujo Completo
 
 ```bash
-# 1. Crear sesión desde QR
+# 1. Crear sesión desde QR (guarda el sesPublicToken de la respuesta)
 curl -X POST "http://localhost:5000/api/mesas/qr/MESA-001/sesion" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{"cantidadPersonas": 2, "origen": "QR"}'
+# Respuesta: { "sesPublicToken": "…", "fechaHoraInicio": "…", … }
 
-# 2. Confirmar pedido
-curl -X POST "http://localhost:5000/api/sesiones/1/pedidos" \
+# 2. Confirmar pedido (usa el sesPublicToken del paso 1)
+curl -X POST "http://localhost:5000/api/sesiones/<sesPublicToken>/pedidos" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{"itemMenuId": 1, "cantidad": 2}'
+# Respuesta 201: { "id": 10, "itemMenuNombre": "…", … }
 
-# 3. Calificar pedido
-curl -X POST "http://localhost:5000/api/pedidos/1/rating" \
+# 3. Calificar pedido (usa el id del pedido del paso 2)
+curl -X POST "http://localhost:5000/api/pedidos/10/rating" \
   -H "Content-Type: application/json" \
+  -H "X-Client-Id: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{"puntaje": 1}'
 
-# 4. Ver ranking
+# 4. Ver feed (trending + ranking + recomendados) desde sesión
+curl "http://localhost:5000/api/sesiones/<sesPublicToken>/feed?min=30&periodo=7d&dias=30"
+
+# 5. Ver ranking por restaurante (admin)
 curl "http://localhost:5000/api/restaurantes/1/ranking?periodo=7d"
 ```
 

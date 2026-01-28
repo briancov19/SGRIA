@@ -28,6 +28,10 @@ public class MesasQrController : ControllerBase
     /// Si la sesión existente tiene más de 90 minutos sin actividad, se cierra automáticamente.
     /// </summary>
     [HttpPost("qr/{qrToken}/sesion")]
+    [ProducesResponseType(typeof(SesionPublicaDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CrearOReutilizarSesion(
         [FromRoute] string qrToken,
         [FromBody] SesionMesaCreateDto? dto,

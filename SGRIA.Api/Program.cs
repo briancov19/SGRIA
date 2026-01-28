@@ -10,7 +10,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "SGRIA API",
+        Version = "v1",
+        Description = "API REST para interacción anónima en restaurantes: sesiones por QR, pedidos, ratings, feed y estadísticas. Usa `sesPublicToken` (GUID) en endpoints públicos."
+    });
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", ".") ?? type.Name);
+});
 
 // Services
 builder.Services.AddScoped<MesaService>();

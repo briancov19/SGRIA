@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 public record RestauranteDto(
@@ -9,12 +11,12 @@ public record RestauranteDto(
 );
 
 public record RestauranteCreateDto(
-    string Nombre,
-    string? TimeZone
+    [property: Required][property: MinLength(1)][property: MaxLength(200)] string Nombre,
+    [property: MaxLength(50)] string? TimeZone
 );
 
 public record RestauranteUpdateDto(
-    string? Nombre,
-    string? TimeZone,
+    [property: MinLength(1)][property: MaxLength(200)] string? Nombre,
+    [property: MaxLength(50)] string? TimeZone,
     bool? Activo
 );

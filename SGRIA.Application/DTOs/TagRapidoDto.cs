@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 public record TagRapidoDto(
@@ -8,12 +10,12 @@ public record TagRapidoDto(
 );
 
 public record TagRapidoCreateDto(
-    string Nombre,
-    string? Tipo
+    [property: Required][property: MinLength(1)][property: MaxLength(100)] string Nombre,
+    [property: MaxLength(50)] string? Tipo
 );
 
 public record TagRapidoUpdateDto(
-    string? Nombre,
-    string? Tipo,
+    [property: MinLength(1)][property: MaxLength(100)] string? Nombre,
+    [property: MaxLength(50)] string? Tipo,
     bool? Activo
 );

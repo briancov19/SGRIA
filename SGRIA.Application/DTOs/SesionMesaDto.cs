@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 /// <summary>
@@ -15,6 +17,6 @@ public record SesionMesaDto(
 );
 
 public record SesionMesaCreateDto(
-    int? CantidadPersonas,
-    string? Origen
+    [property: Range(1, 50)] int? CantidadPersonas,
+    [property: MaxLength(20)] string? Origen
 );

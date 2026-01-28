@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SGRIA.Application.DTOs;
 
 public record SenalRatingDto(
@@ -8,5 +10,5 @@ public record SenalRatingDto(
 );
 
 public record SenalRatingCreateDto(
-    short Puntaje // -1 (👎), 0 (😐), 1 (👍)
+    [property: Required][property: Range(-1, 1)] short Puntaje // -1 (👎), 0 (😐), 1 (👍)
 );
